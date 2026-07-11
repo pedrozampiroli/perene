@@ -82,3 +82,24 @@ export interface UsageStats {
   output: number;
   cost: number;
 }
+
+export interface DirEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+}
+
+export interface GitFile {
+  path: string;
+  status: string; // código de 2 chars do porcelain
+}
+
+export interface GitStatus {
+  isRepo: boolean;
+  root?: string | null;
+  branch: string;
+  ahead: number;
+  behind: number;
+  dirty: boolean;
+  files: GitFile[];
+}

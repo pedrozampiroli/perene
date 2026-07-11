@@ -5,6 +5,7 @@
 //! No M3 entram os comandos de estado (manifest/settings/paste).
 
 mod client;
+mod files;
 mod state;
 
 use client::DaemonClient;
@@ -30,6 +31,17 @@ pub fn run() {
             state::session_history_load,
             state::session_transcript,
             state::usage_load,
+            files::fs_list_dir,
+            files::fs_read_file,
+            files::fs_write_file,
+            files::git_status,
+            files::git_diff,
+            files::git_branches,
+            files::git_checkout,
+            files::git_create_branch,
+            files::git_fetch,
+            files::git_pull,
+            files::git_open_pr,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Perene");

@@ -298,6 +298,62 @@ class AppStore {
     this.save();
   }
 
+  private makeFilesPane(cwd: string): Pane {
+    // Pane de arquivos não abre PTY; não entra em freshPanes.
+    return {
+      id: newId("pane"),
+      kind: "files",
+      toolProfileId: "shell",
+      workingDirectory: cwd,
+      harnessSessionId: null,
+      resumeExisting: false,
+      scrollbackFile: null,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+  }
+
+  /** Abre um visualizador de arquivos numa aba nova (raiz = dir do workspace). */
+  openFilesTab(): void {
+    const ws = this.activeWorkspace;
+    if (!ws) return;
+    const pane = this.makeFilesPane(ws.directory ?? this.home);
+    const tab: Tab = {
+      id: newId("tab"),
+      folderId: null,
+      title: "arquivos",
+      panes: [pane],
+      layout: leaf(pane.id),
+      activePaneId: pane.id,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    ws.tabs.push(tab);
+    ws.activeTabId = tab.id;
+    this.activePaneId = pane.id;
+    this.save();
+  }
+
+  /** Divide o pane ativo colocando um visualizador de arquivos ao lado. */
+  splitFilesBeside(paneId: string): void {
+    const ws = this.activeWorkspace;
+    const tab = this.activeTab;
+    if (!ws || !tab) return;
+    const src = tab.panes.find((p) => p.id === paneId);
+    const pane = this.makeFilesPane(src?.workingDirectory ?? ws.directory ?? this.home);
+    tab.panes.push(pane);
+    tab.layout = replaceLeaf(tab.layout, paneId, {
+      type: "split",
+      id: newId("split"),
+      direction: "horizontal",
+      ratio: 0.5,
+      children: [leaf(paneId), leaf(pane.id)],
+    });
+    tab.activePaneId = pane.id;
+    this.activePaneId = pane.id;
+    this.save();
+  }
+
   selectTab(id: string): void {
     const ws = this.activeWorkspace;
     if (!ws) return;

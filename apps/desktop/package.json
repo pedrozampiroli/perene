@@ -18,7 +18,21 @@
     "@xterm/addon-webgl": "^0.18.0",
     "@xterm/addon-search": "^0.15.0",
     "@xterm/addon-unicode11": "^0.8.0",
-    "@xterm/addon-clipboard": "^0.1.0"
+    "@xterm/addon-clipboard": "^0.1.0",
+    "codemirror": "^6",
+    "@codemirror/state": "^6",
+    "@codemirror/view": "^6",
+    "@codemirror/commands": "^6",
+    "@codemirror/search": "^6",
+    "@codemirror/language": "^6",
+    "@codemirror/theme-one-dark": "^6",
+    "@codemirror/lang-javascript": "^6",
+    "@codemirror/lang-json": "^6",
+    "@codemirror/lang-markdown": "^6",
+    "@codemirror/lang-html": "^6",
+    "@codemirror/lang-css": "^6",
+    "@codemirror/lang-rust": "^6",
+    "@codemirror/lang-python": "^6"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5",

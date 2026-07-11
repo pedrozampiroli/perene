@@ -3,6 +3,7 @@
   import { PerenePane } from "../lib/terminal";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
+  import FilesPane from "./FilesPane.svelte";
 
   let { paneId }: { paneId: string } = $props();
 
@@ -10,13 +11,14 @@
   let pane: PerenePane | undefined;
 
   const data = $derived(app.findPane(paneId));
+  const isFiles = $derived(data?.kind === "files");
   const prof = $derived(profile(data?.toolProfileId ?? "shell"));
   const isActive = $derived(app.activePaneId === paneId);
   const dirLabel = $derived((data?.workingDirectory ?? "").split("/").filter(Boolean).pop() ?? "~");
 
   onMount(() => {
     const p = app.findPane(paneId);
-    if (!p) return;
+    if (!p || p.kind === "files") return; // pane de arquivos não abre PTY
     pane = new PerenePane(paneId, app.settings.fontSize);
     pane
       .open(container, {
@@ -29,23 +31,27 @@
   onDestroy(() => pane?.dispose());
 
   $effect(() => {
-    if (isActive) pane?.focus();
+    if (isActive && !isFiles) pane?.focus();
   });
 
   function focusPane() {
     app.setActivePane(paneId);
-    pane?.focus();
+    if (!isFiles) pane?.focus();
   }
 </script>
 
 <div class="pane" class:active={isActive} onpointerdown={focusPane}>
-  <div class="pane-head" style="--accent:{prof.color}">
+  <div class="pane-head" style="--accent:{isFiles ? '#6ea8fe' : prof.color}">
     <span class="dot"></span>
-    <span class="label">{prof.label}</span>
+    <span class="label">{isFiles ? "Arquivos" : prof.label}</span>
     <span class="dir">{dirLabel}</span>
     <button class="x" title="Fechar painel (⌘W)" onclick={() => app.closePane(paneId)}>✕</button>
   </div>
-  <div class="term" bind:this={container}></div>
+  {#if isFiles}
+    <div class="term"><FilesPane {paneId} /></div>
+  {:else}
+    <div class="term" bind:this={container}></div>
+  {/if}
 </div>
 
 <style>
