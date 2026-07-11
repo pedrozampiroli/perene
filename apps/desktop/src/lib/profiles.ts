@@ -26,27 +26,74 @@ export function needsSessionId(profileId: string): boolean {
   return profileId === "claude";
 }
 
+function yoloFlag(profileId: string, on: boolean): string {
+  if (!on) return "";
+  switch (profileId) {
+    case "claude":
+      return " --dangerously-skip-permissions";
+    case "codex":
+      return " --dangerously-bypass-approvals-and-sandbox";
+    case "opencode":
+      return " --auto";
+    default:
+      return "";
+  }
+}
+
 /**
  * Comando do login shell para um pane. `null` = shell puro.
- * YOLO adiciona a flag de "pular permissões" de cada harness.
+ *
+ * Três modos:
+ *  - `fresh`: pane novo → cria sessão (`claude --session-id`, `codex`, `opencode`).
+ *  - `reboot`: pane restaurado após o daemon morrer → retoma a última conversa
+ *    daquele diretório (`claude --resume <id>`, `codex resume --last`,
+ *    `opencode --continue`).
+ *  - histórico (`pane.resumeExisting`): retoma uma sessão específica por id
+ *    (`claude --resume <id>`, `codex resume <id>`, `opencode --session <id>`).
+ *
+ * Nunca usa `claude --continue`.
  */
-export function buildCommand(pane: Pane, settings: Settings): string | null {
-  switch (pane.toolProfileId) {
-    case "claude": {
-      // Nunca `--continue` (colide com múltiplas sessões na mesma pasta).
-      const id = pane.harnessSessionId ?? "";
-      const yolo = settings.yolo ? " --dangerously-skip-permissions" : "";
-      return `claude --session-id ${id}${yolo}`;
+export function buildCommand(pane: Pane, settings: Settings, isFresh: boolean): string | null {
+  const p = pane.toolProfileId;
+  const id = pane.harnessSessionId ?? "";
+  const yolo = yoloFlag(p, settings.yolo);
+
+  if (pane.resumeExisting) {
+    // Aberto do histórico: retoma a sessão exata.
+    switch (p) {
+      case "claude":
+        return `claude --resume ${id}${yolo}`;
+      case "codex":
+        return `codex resume ${id}${yolo}`;
+      case "opencode":
+        return `opencode --session ${id}${yolo}`;
+      default:
+        return null;
     }
-    case "codex": {
-      const yolo = settings.yolo ? " --dangerously-bypass-approvals-and-sandbox" : "";
-      return `codex${yolo}`;
+  }
+
+  if (isFresh) {
+    switch (p) {
+      case "claude":
+        return `claude --session-id ${id}${yolo}`;
+      case "codex":
+        return `codex${yolo}`;
+      case "opencode":
+        return `opencode${yolo}`;
+      default:
+        return null;
     }
-    case "opencode": {
-      const yolo = settings.yolo ? " --auto" : "";
-      return `opencode${yolo}`;
-    }
+  }
+
+  // Restauração pós-reboot: retoma a conversa mais recente do diretório.
+  switch (p) {
+    case "claude":
+      return `claude --resume ${id}${yolo}`;
+    case "codex":
+      return `codex resume --last${yolo}`;
+    case "opencode":
+      return `opencode --continue${yolo}`;
     default:
-      return null; // shell
+      return null;
   }
 }

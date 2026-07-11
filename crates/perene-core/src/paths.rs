@@ -68,6 +68,14 @@ pub fn paste_dir() -> PathBuf {
     state_dir().join("paste")
 }
 
+/// Diretório home do usuário (`$HOME` / `%USERPROFILE%`).
+pub fn home_dir() -> PathBuf {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

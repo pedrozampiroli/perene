@@ -101,8 +101,13 @@ class AppStore {
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
   settingsOpen = $state(false);
+  historyOpen = $state(false);
+  usageOpen = $state(false);
   home = "";
 
+  /** Panes criados NESTA sessão (spawn fresco). Os demais, ao serem restaurados
+   *  após o daemon morrer, usam comando de resume. */
+  private freshPanes = new Set<string>();
   private saveTimer: ReturnType<typeof setTimeout> | undefined;
 
   async load(): Promise<void> {
@@ -258,7 +263,7 @@ class AppStore {
   }
 
   private makePane(profileId: string, cwd: string): Pane {
-    return {
+    const pane: Pane = {
       id: newId("pane"),
       kind: "terminal",
       toolProfileId: profileId,
@@ -269,6 +274,8 @@ class AppStore {
       createdAt: now(),
       updatedAt: now(),
     };
+    this.freshPanes.add(pane.id); // criado agora → spawn fresco (não resume)
+    return pane;
   }
 
   createTab(profileId: string, folderId: string | null = null): void {
@@ -406,7 +413,47 @@ class AppStore {
   }
 
   commandFor(pane: Pane): string | null {
-    return buildCommand(pane, this.settings);
+    // Pane criado nesta sessão → fresco; carregado do manifest → resume (a aba
+    // volta e a CLI retoma a MESMA conversa após reboot).
+    return buildCommand(pane, this.settings, this.freshPanes.has(pane.id));
+  }
+
+  /** Abre uma sessão do histórico numa aba nova, retomando-a pelo id. */
+  openHistorySession(rec: {
+    harness: string;
+    sessionId: string;
+    projectPath: string;
+    title?: string | null;
+  }): void {
+    const ws = this.activeWorkspace;
+    if (!ws) return;
+    const pane: Pane = {
+      id: newId("pane"),
+      kind: "terminal",
+      toolProfileId: rec.harness,
+      workingDirectory: rec.projectPath,
+      harnessSessionId: rec.sessionId,
+      resumeExisting: true, // → comando de resume específico por id
+      scrollbackFile: null,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    // NÃO entra em freshPanes: queremos o comando de resume.
+    const tab: Tab = {
+      id: newId("tab"),
+      folderId: null,
+      title: rec.title?.slice(0, 24) || `${rec.harness} ↩`,
+      panes: [pane],
+      layout: leaf(pane.id),
+      activePaneId: pane.id,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    ws.tabs.push(tab);
+    ws.activeTabId = tab.id;
+    this.activePaneId = pane.id;
+    this.historyOpen = false;
+    this.save();
   }
 }
 

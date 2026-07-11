@@ -27,6 +27,9 @@ pub fn run() {
             state::settings_save,
             state::home_dir,
             state::save_paste_image,
+            state::session_history_load,
+            state::session_transcript,
+            state::usage_load,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Perene");

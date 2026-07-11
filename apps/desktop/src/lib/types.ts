@@ -65,3 +65,20 @@ export interface Settings {
   yolo: boolean;
   fontSize: number;
 }
+
+export interface SessionRecord {
+  harness: string; // "claude" | "codex" | "opencode"
+  sessionId: string;
+  projectPath: string;
+  title?: string | null;
+  dateMs: number;
+  sourcePath?: string | null;
+}
+
+export interface UsageStats {
+  harness: string;
+  sessions: number;
+  input: number;
+  output: number;
+  cost: number;
+}

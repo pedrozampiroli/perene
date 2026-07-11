@@ -1,7 +1,7 @@
 // Wrappers tipados sobre os comandos Tauri.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { Manifest, Settings } from "./types";
+import type { Manifest, SessionRecord, Settings, UsageStats } from "./types";
 
 export const api = {
   manifestLoad: () => invoke<Manifest>("manifest_load"),
@@ -10,4 +10,8 @@ export const api = {
   settingsSave: (settings: Settings) => invoke<void>("settings_save", { settings }),
   homeDir: () => invoke<string>("home_dir"),
   savePasteImage: (dataB64: string) => invoke<string>("save_paste_image", { dataB64 }),
+  sessionHistoryLoad: () => invoke<SessionRecord[]>("session_history_load"),
+  sessionTranscript: (record: SessionRecord) =>
+    invoke<string>("session_transcript", { record }),
+  usageLoad: () => invoke<UsageStats[]>("usage_load"),
 };

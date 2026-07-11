@@ -53,6 +53,8 @@
     <button title="Grade" onclick={() => app.arrange("grid")}>▦</button>
   </div>
 
+  <button title="Histórico de sessões (⌘Y)" onclick={() => (app.historyOpen = true)}>🕐</button>
+  <button title="Uso de tokens (⌘U)" onclick={() => (app.usageOpen = true)}>📊</button>
   <button class="gear" title="Configurações (⌘,)" onclick={() => (app.settingsOpen = true)}>⚙</button>
 </div>
 

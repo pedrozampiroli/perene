@@ -7,7 +7,10 @@
 use parking_lot::Mutex;
 
 use perene_core::models::now_millis;
-use perene_core::{paths, Manifest, ManifestStore, Settings, SettingsStore};
+use perene_core::{
+    history, paths, usage, Manifest, ManifestStore, SessionRecord, Settings, SettingsStore,
+    UsageStats,
+};
 
 /// Serializa gravações de estado.
 #[derive(Default)]
@@ -59,6 +62,25 @@ pub fn settings_save(state: tauri::State<'_, Persist>, settings: Settings) -> Re
 #[tauri::command]
 pub fn home_dir() -> String {
     home_dir_string()
+}
+
+/// Histórico de sessões dos 3 harnesses (Claude/Codex/OpenCode).
+/// Roda numa thread do Tauri (pode levar segundos a frio) — não trava a UI.
+#[tauri::command]
+pub fn session_history_load() -> Vec<SessionRecord> {
+    history::load_all()
+}
+
+/// Preview do transcript de uma sessão (sob demanda).
+#[tauri::command]
+pub fn session_transcript(record: SessionRecord) -> String {
+    history::transcript(&record, 4000)
+}
+
+/// Uso de tokens/custo por harness (cache em disco: < 10s frio / < 1s quente).
+#[tauri::command]
+pub fn usage_load() -> Vec<UsageStats> {
+    usage::load()
 }
 
 /// Salva bytes de imagem (já PNG, vindos do clipboard) em `~/.perene2/paste/` e

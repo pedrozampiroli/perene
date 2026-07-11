@@ -5,6 +5,8 @@
   import TabGrid from "./components/TabGrid.svelte";
   import BottomBar from "./components/BottomBar.svelte";
   import SettingsModal from "./components/SettingsModal.svelte";
+  import HistoryModal from "./components/HistoryModal.svelte";
+  import UsageModal from "./components/UsageModal.svelte";
 
   const isMac = navigator.userAgent.toLowerCase().includes("mac");
 
@@ -26,6 +28,17 @@
       app.settingsOpen = !app.settingsOpen;
       return;
     }
+    const group = isMac ? !e.shiftKey : e.shiftKey;
+    if (group && k === "y") {
+      e.preventDefault();
+      app.historyOpen = !app.historyOpen;
+      return;
+    }
+    if (group && k === "u") {
+      e.preventDefault();
+      app.usageOpen = !app.usageOpen;
+      return;
+    }
     if (k >= "1" && k <= "9" && !(!isMac && e.shiftKey)) {
       const ws = app.activeWorkspace;
       const tab = ws?.tabs[Number(k) - 1];
@@ -36,7 +49,6 @@
       return;
     }
     // Grupo T/W/D: mac = só Cmd; win/linux = Ctrl+Shift (evita colidir com o PTY).
-    const group = isMac ? !e.shiftKey : e.shiftKey;
     if (group && k === "t") {
       e.preventDefault();
       app.createTab("shell");
@@ -68,6 +80,12 @@
   </div>
   {#if app.settingsOpen}
     <SettingsModal />
+  {/if}
+  {#if app.historyOpen}
+    <HistoryModal />
+  {/if}
+  {#if app.usageOpen}
+    <UsageModal />
   {/if}
 {:else}
   <div class="splash">Perene…</div>
