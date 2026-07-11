@@ -1,0 +1,19 @@
+# Rust
+/target
+**/target
+Cargo.lock.bak
+
+# Node / frontend
+node_modules
+apps/desktop/dist
+apps/desktop/.vite
+
+# Tauri gerado
+apps/desktop/src-tauri/gen
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Estado local do app (não deve existir no repo, mas por garantia)
+.perene2/

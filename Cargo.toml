@@ -1,0 +1,42 @@
+# Perene v2 — Cargo workspace
+#
+# Toda a lógica de negócio vive em crates Rust puros (perene-core, perene-protocol,
+# perene-daemon). A UI (apps/desktop/src-tauri) é descartável: um cliente fino do
+# daemon. Isso permite migrar pra uma UI nativa (iced/gpui) no futuro sem reescrever
+# o core.
+[workspace]
+resolver = "2"
+members = [
+    "crates/perene-protocol",
+    "crates/perene-core",
+    "crates/perene-daemon",
+    "apps/desktop/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Pedro Zampiroli <assinaturas@tegasistemas.com.br>"]
+repository = "https://github.com/zampiroli/perene-tauri"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+parking_lot = "0.12"
+uuid = { version = "1", features = ["v4"] }
+portable-pty = "0.8"
+base64 = "0.22"
+
+perene-protocol = { path = "crates/perene-protocol" }
+perene-core = { path = "crates/perene-core" }
+
+# Perfil de release enxuto — RAM/binário pequenos são requisito do projeto.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

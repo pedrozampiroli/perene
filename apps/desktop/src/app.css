@@ -1,0 +1,25 @@
+:root {
+  color-scheme: dark;
+  --bg: #1e1e1e;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  background: var(--bg);
+  overflow: hidden;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* O xterm.js gerencia seu próprio layout; só garantimos que ele preencha o pane. */
+.xterm {
+  height: 100%;
+}

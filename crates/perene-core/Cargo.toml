@@ -1,0 +1,15 @@
+[package]
+name = "perene-core"
+description = "Modelos de dados + persistência do Perene (Rust puro, zero deps de UI)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

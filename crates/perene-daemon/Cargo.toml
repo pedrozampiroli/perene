@@ -1,0 +1,12 @@
+[package]
+name = "perene-daemon"
+description = "Servidor de sessões: 1 PTY por pane, sobrevive à UI. Corpo real chega no M1."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+perene-protocol = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
