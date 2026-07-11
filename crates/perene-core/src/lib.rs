@@ -6,7 +6,14 @@
 
 use uuid::Uuid;
 
+pub mod models;
 pub mod paths;
+pub mod store;
+
+pub use models::{
+    Folder, LayoutNode, Manifest, Pane, PaneKind, SplitDirection, Tab, Workspace,
+};
+pub use store::ManifestStore;
 
 /// Versão do formato de manifest gravado em disco. Bump só com migração.
 pub const MANIFEST_VERSION: u32 = 3;
