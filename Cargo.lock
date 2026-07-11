@@ -2295,9 +2295,16 @@ dependencies = [
 name = "perene-daemon"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "libc",
+ "parking_lot",
+ "perene-core",
  "perene-protocol",
+ "portable-pty",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -2305,10 +2312,10 @@ name = "perene-desktop"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "libc",
  "parking_lot",
  "perene-core",
  "perene-protocol",
- "portable-pty",
  "serde",
  "serde_json",
  "tauri",

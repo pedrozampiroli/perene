@@ -1,0 +1,220 @@
+//! Transporte IPC + single-instance.
+//!
+//! Unix: `UnixListener`/`UnixStream` (mac/linux) — implementado e testado.
+//! Windows: named pipes ficam pro M6 (quando houver CI Windows de verdade); por
+//! ora [`run`] retorna erro claro lá, mas o crate compila.
+//!
+//! Single-instance (lição #2 — dois daemons NUNCA): `flock` exclusivo no lockfile.
+//! Se outro daemon já segura o lock, [`run`] falha e o processo sai (a UI então
+//! adota o daemon existente conectando no socket).
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use perene_core::paths;
+
+use crate::session::SessionManager;
+
+/// Configuração do daemon. Injetável (testes usam diretórios temporários — nunca
+/// tocam `~/.perene2`, lição #1).
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub socket_path: PathBuf,
+    pub lock_path: PathBuf,
+    pub scrollback_dir: PathBuf,
+    pub scrollback_cap: usize,
+}
+
+impl Config {
+    /// Config de produção, derivada de `perene_core::paths` (respeita
+    /// `PERENE2_STATE_DIR`).
+    pub fn from_env() -> Self {
+        Self {
+            socket_path: paths::daemon_endpoint(),
+            lock_path: paths::daemon_lock(),
+            scrollback_dir: paths::scrollback_dir(),
+            scrollback_cap: 4 * 1024 * 1024,
+        }
+    }
+}
+
+/// Guard do lock de single-instance. Solta o lock quando dropado (fim do processo).
+pub struct SingleInstance {
+    #[allow(dead_code)]
+    file: std::fs::File,
+}
+
+#[cfg(unix)]
+pub fn acquire_single_instance(lock_path: &Path) -> anyhow::Result<SingleInstance> {
+    use std::os::unix::io::AsRawFd;
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(lock_path)?;
+    // flock exclusivo não-bloqueante.
+    let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if ret != 0 {
+        anyhow::bail!("outro daemon já está rodando (lock ocupado)");
+    }
+    Ok(SingleInstance { file })
+}
+
+#[cfg(windows)]
+pub fn acquire_single_instance(_lock_path: &Path) -> anyhow::Result<SingleInstance> {
+    anyhow::bail!("single-instance no Windows ainda não implementado — TODO M6")
+}
+
+/// Sobe o daemon: adquire o lock, faz bind do socket e serve para sempre.
+#[cfg(unix)]
+pub fn run(config: Config) -> anyhow::Result<()> {
+    use std::os::unix::net::UnixListener;
+
+    let _lock = acquire_single_instance(&config.lock_path)?;
+
+    if let Some(parent) = config.socket_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Sob o flock já garantimos exclusão; um socket remanescente é lixo — remove.
+    if config.socket_path.exists() {
+        let _ = std::fs::remove_file(&config.socket_path);
+    }
+    let listener = UnixListener::bind(&config.socket_path)?;
+
+    let mgr = SessionManager::new(config.scrollback_dir.clone(), config.scrollback_cap);
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                let mgr = Arc::clone(&mgr);
+                std::thread::spawn(move || handle_client(mgr, stream));
+            }
+            Err(_) => continue,
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+pub fn run(_config: Config) -> anyhow::Result<()> {
+    anyhow::bail!("daemon IPC no Windows ainda não implementado (named pipes) — TODO M6")
+}
+
+#[cfg(unix)]
+fn handle_client(mgr: Arc<SessionManager>, stream: std::os::unix::net::UnixStream) {
+    use std::io::{BufRead, BufReader, BufWriter, Write};
+    use std::sync::mpsc;
+
+    use perene_protocol::{decode_line, encode_line, ClientMessage, DaemonMessage};
+
+    let client_id = mgr.next_client_id();
+    let (tx, rx) = mpsc::channel::<DaemonMessage>();
+
+    // Thread de escrita: dreno do canal → socket. Isola o socket de escritas
+    // concorrentes (as threads de PTY enviam pelo canal).
+    let write_stream = match stream.try_clone() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let writer = std::thread::spawn(move || {
+        let mut w = BufWriter::new(write_stream);
+        for msg in rx {
+            match encode_line(&msg) {
+                Ok(line) => {
+                    if w.write_all(line.as_bytes()).is_err() {
+                        break;
+                    }
+                    if w.flush().is_err() {
+                        break;
+                    }
+                }
+                Err(_) => {}
+            }
+        }
+    });
+
+    // Loop de leitura: socket → mensagens do cliente.
+    let reader = BufReader::new(stream);
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let msg: ClientMessage = match decode_line(&line) {
+            Ok(m) => m,
+            Err(e) => {
+                let _ = tx.send(DaemonMessage::Error {
+                    message: format!("json inválido: {e}"),
+                });
+                continue;
+            }
+        };
+        if dispatch(&mgr, client_id, &tx, msg).is_break() {
+            break;
+        }
+    }
+
+    mgr.remove_client(client_id);
+    drop(tx); // encerra a thread de escrita quando todos os clones caírem.
+    let _ = writer.join();
+}
+
+#[cfg(unix)]
+fn dispatch(
+    mgr: &Arc<SessionManager>,
+    client_id: u64,
+    tx: &std::sync::mpsc::Sender<perene_protocol::DaemonMessage>,
+    msg: perene_protocol::ClientMessage,
+) -> std::ops::ControlFlow<()> {
+    use base64::Engine;
+    use perene_protocol::{ClientMessage, DaemonMessage, PROTOCOL_VERSION};
+    use std::ops::ControlFlow;
+
+    match msg {
+        ClientMessage::Hello { .. } => {
+            let _ = tx.send(DaemonMessage::Welcome {
+                protocol_version: PROTOCOL_VERSION,
+                daemon_pid: std::process::id(),
+            });
+        }
+        ClientMessage::Spawn(req) => {
+            if let Err(e) = mgr.spawn(&req) {
+                let _ = tx.send(DaemonMessage::Error { message: e });
+            }
+        }
+        ClientMessage::Attach { pane_id } => mgr.attach(client_id, tx, &pane_id),
+        ClientMessage::Detach { pane_id } => mgr.detach(client_id, &pane_id),
+        ClientMessage::Write { pane_id, data_b64 } => {
+            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data_b64.as_bytes())
+            {
+                mgr.write_input(&pane_id, &bytes);
+            }
+        }
+        ClientMessage::Resize {
+            pane_id,
+            cols,
+            rows,
+        } => mgr.resize(&pane_id, cols, rows),
+        ClientMessage::Kill { pane_id } => mgr.kill(&pane_id),
+        ClientMessage::ListPanes => {
+            let _ = tx.send(DaemonMessage::Panes {
+                panes: mgr.list_panes(),
+            });
+        }
+        ClientMessage::Ping => {
+            let _ = tx.send(DaemonMessage::Pong);
+        }
+        ClientMessage::Shutdown => {
+            // Shutdown limpo: despeja scrollback e sai (mata todos os PTYs).
+            mgr.flush_scrollback();
+            std::process::exit(0);
+        }
+    }
+    ControlFlow::Continue(())
+}

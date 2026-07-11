@@ -6,6 +6,8 @@
 
 use uuid::Uuid;
 
+pub mod paths;
+
 /// Versão do formato de manifest gravado em disco. Bump só com migração.
 pub const MANIFEST_VERSION: u32 = 3;
 

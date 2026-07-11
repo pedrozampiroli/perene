@@ -20,11 +20,13 @@ tauri-plugin-clipboard-manager = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 parking_lot = { workspace = true }
-portable-pty = { workspace = true }
 base64 = { workspace = true }
 
 perene-protocol = { workspace = true }
 perene-core = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [features]
 # Feature default do Tauri para produção (habilita custom-protocol).

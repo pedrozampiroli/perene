@@ -1,11 +1,19 @@
 //! `perene-daemon` — servidor de sessões de terminal.
 //!
-//! Placeholder do M0: no M1 este crate vira um binário que gerencia 1 PTY por
-//! pane (portable-pty), com scrollback em memória, IPC por unix socket / named
-//! pipe (JSON-lines), attach/detach e single-instance via lock no socket.
-//! Por ora só reexporta o protocolo para fixar a dependência no workspace.
+//! Processo separado da UI: gerencia 1 PTY por pane (portable-pty), guarda
+//! scrollback em memória e sobrevive ao fechamento da janela. A UI é um cliente
+//! que atacha/detacha via IPC (JSON-lines) e recebe replay de scrollback no
+//! reattach. Single-instance garantido por flock (lição #2).
 
+pub mod pty;
+pub mod server;
+pub mod session;
+
+pub use server::{acquire_single_instance, run, Config, SingleInstance};
+pub use session::SessionManager;
+
+/// Reexporta o protocolo para clientes/testes.
 pub use perene_protocol as protocol;
 
-/// Versão do protocolo do daemon. Bump quando o wire mudar de forma incompatível.
-pub const PROTOCOL_VERSION: u32 = 1;
+/// Versão do protocolo IPC (espelha o crate de protocolo).
+pub const PROTOCOL_VERSION: u32 = perene_protocol::PROTOCOL_VERSION;

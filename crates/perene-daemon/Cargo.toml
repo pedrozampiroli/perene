@@ -1,6 +1,6 @@
 [package]
 name = "perene-daemon"
-description = "Servidor de sessões: 1 PTY por pane, sobrevive à UI. Corpo real chega no M1."
+description = "Servidor de sessões: 1 PTY por pane, sobrevive à UI. IPC JSON-lines."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,5 +8,18 @@ authors.workspace = true
 
 [dependencies]
 perene-protocol = { workspace = true }
+perene-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+portable-pty = { workspace = true }
+base64 = { workspace = true }
+parking_lot = { workspace = true }
+anyhow = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+base64 = { workspace = true }
+perene-protocol = { workspace = true }
