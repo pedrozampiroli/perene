@@ -1,5 +1,5 @@
-//! Persistência do manifest: escrita atômica (tmp + rename) + 1 backup `.bak`,
-//! com fallback ao backup se o principal corromper (lição #3).
+//! Persistência atômica: escrita `tmp + fsync + rename` + 1 backup `.bak`, com
+//! fallback ao backup se o principal corromper (lição #3).
 //!
 //! O caminho é **injetado** (nunca hardcode de `~/.perene2`): testes usam
 //! diretórios temporários e jamais tocam o estado real (lição #1).
@@ -7,9 +7,75 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+
 use crate::models::Manifest;
 
-/// Guarda um manifest em disco de forma atômica e resiliente.
+fn backup_of(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_os_string();
+    s.push(".bak");
+    PathBuf::from(s)
+}
+
+fn tmp_of(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_os_string();
+    s.push(".tmp");
+    PathBuf::from(s)
+}
+
+/// Grava `value` como JSON em `path`, atomicamente, rotacionando `.bak`.
+///
+/// 1. Escreve `<path>.tmp` (+ fsync). 2. Copia o principal atual → `.bak`.
+/// 3. `rename(tmp, path)` — troca atômica. Crash entre 2 e 3 deixa o principal
+/// intacto e o `.bak` com o estado anterior.
+pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let bytes =
+        serde_json::to_vec_pretty(value).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+    let tmp = tmp_of(path);
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(&bytes)?;
+        f.sync_all()?;
+    }
+    if path.exists() {
+        let _ = std::fs::copy(path, backup_of(path)); // best-effort
+    }
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Lê JSON de `path`. `None` se não existe. Se o principal corromper, tenta `.bak`.
+pub fn read_json_with_backup<T: DeserializeOwned>(path: &Path) -> io::Result<Option<T>> {
+    match std::fs::read(path) {
+        Ok(bytes) => match serde_json::from_slice::<T>(&bytes) {
+            Ok(v) => Ok(Some(v)),
+            Err(_) => read_backup(path),
+        },
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+fn read_backup<T: DeserializeOwned>(path: &Path) -> io::Result<Option<T>> {
+    match std::fs::read(backup_of(path)) {
+        Ok(bytes) => serde_json::from_slice::<T>(&bytes)
+            .map(Some)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "arquivo principal corrompido e sem backup",
+        )),
+        Err(e) => Err(e),
+    }
+}
+
+/// Guarda o manifest em disco de forma atômica e resiliente.
 pub struct ManifestStore {
     path: PathBuf,
 }
@@ -29,70 +95,19 @@ impl ManifestStore {
         &self.path
     }
 
-    fn backup_path(&self) -> PathBuf {
-        self.path.with_extension("json.bak")
+    pub fn backup_path(&self) -> PathBuf {
+        backup_of(&self.path)
     }
 
-    fn tmp_path(&self) -> PathBuf {
-        self.path.with_extension("json.tmp")
-    }
-
-    /// Carrega o manifest. `None` se ainda não existe. Se o principal estiver
-    /// corrompido, tenta o `.bak` antes de falhar.
+    /// Carrega o manifest. `None` se ainda não existe; fallback ao `.bak` se
+    /// o principal corromper.
     pub fn load(&self) -> io::Result<Option<Manifest>> {
-        match std::fs::read(&self.path) {
-            Ok(bytes) => match serde_json::from_slice::<Manifest>(&bytes) {
-                Ok(m) => Ok(Some(m)),
-                Err(_) => self.load_backup(),
-            },
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn load_backup(&self) -> io::Result<Option<Manifest>> {
-        match std::fs::read(self.backup_path()) {
-            Ok(bytes) => serde_json::from_slice::<Manifest>(&bytes)
-                .map(Some)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "manifest principal corrompido e sem backup",
-            )),
-            Err(e) => Err(e),
-        }
+        read_json_with_backup(&self.path)
     }
 
     /// Salva o manifest atomicamente, rotacionando o backup do estado anterior.
-    ///
-    /// 1. Escreve em `manifest.json.tmp` (+ fsync).
-    /// 2. Copia o principal atual → `.bak` (backup do que já estava lá).
-    /// 3. `rename(tmp, principal)` — troca atômica.
-    ///
-    /// Um crash entre 2 e 3 deixa `.bak` = estado anterior e `principal` intacto.
     pub fn save(&self, manifest: &Manifest) -> io::Result<()> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let bytes = serde_json::to_vec_pretty(manifest)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-        let tmp = self.tmp_path();
-        {
-            use std::io::Write;
-            let mut f = std::fs::File::create(&tmp)?;
-            f.write_all(&bytes)?;
-            f.sync_all()?;
-        }
-
-        // Backup do estado anterior (best-effort — não aborta o save).
-        if self.path.exists() {
-            let _ = std::fs::copy(&self.path, self.backup_path());
-        }
-
-        std::fs::rename(&tmp, &self.path)?;
-        Ok(())
+        write_json_atomic(&self.path, manifest)
     }
 }
 
@@ -133,9 +148,7 @@ mod tests {
         m2.workspaces[0].name = "segundo".into();
         store.save(&m2).unwrap();
 
-        // principal = m2
         assert_eq!(store.load().unwrap().unwrap().workspaces[0].name, "segundo");
-        // .bak = m1 (estado anterior)
         let bak_bytes = std::fs::read(store.backup_path()).unwrap();
         let bak: Manifest = serde_json::from_slice(&bak_bytes).unwrap();
         assert_eq!(bak.workspaces[0].name, "primeiro");
@@ -146,30 +159,21 @@ mod tests {
         let (_dir, store) = temp_store();
         let m1 = Manifest::bootstrap("/tmp/good");
         store.save(&m1).unwrap();
-        // Gera um .bak (segundo save).
         let mut m2 = Manifest::bootstrap("/tmp/good2");
         m2.workspaces[0].name = "novo".into();
         store.save(&m2).unwrap();
 
-        // Corrompe o principal.
         std::fs::write(store.path(), b"{ isto nao e json valido").unwrap();
 
-        // load() deve cair no .bak (que tem m1).
         let recovered = store.load().unwrap().unwrap();
-        assert_eq!(recovered.workspaces[0].name, "Perene"); // m1 default name
+        assert_eq!(recovered.workspaces[0].name, "Perene"); // m1 default
     }
 
     #[test]
     fn does_not_touch_real_state_dir() {
-        // Sanidade da lição #1: o store de teste aponta pra um temp, não pro home.
         let (dir, store) = temp_store();
         assert!(store.path().starts_with(dir.path()));
-        assert!(!store.path().starts_with(
-            dirs_home().unwrap_or_default().join(".perene2")
-        ));
-    }
-
-    fn dirs_home() -> Option<PathBuf> {
-        std::env::var("HOME").ok().map(PathBuf::from)
+        let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
+        assert!(!store.path().starts_with(home.join(".perene2")));
     }
 }

@@ -1,0 +1,67 @@
+// Espelho TS do manifest v3 (perene-core::models). Wire em camelCase.
+
+export type Id = string;
+export type PaneKind = "terminal" | "files";
+export type SplitDirection = "horizontal" | "vertical";
+
+export type LayoutNode =
+  | { type: "leaf"; paneId: Id }
+  | {
+      type: "split";
+      id: Id;
+      direction: SplitDirection;
+      ratio: number;
+      children: LayoutNode[];
+    };
+
+export interface Pane {
+  id: Id;
+  kind: PaneKind;
+  toolProfileId: string;
+  workingDirectory: string;
+  harnessSessionId?: string | null;
+  resumeExisting: boolean;
+  scrollbackFile?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Tab {
+  id: Id;
+  folderId?: string | null;
+  title: string;
+  panes: Pane[];
+  layout: LayoutNode;
+  activePaneId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Folder {
+  id: Id;
+  name: string;
+  order: number;
+  collapsed: boolean;
+  directory?: string | null;
+}
+
+export interface Workspace {
+  id: Id;
+  name: string;
+  order: number;
+  folders: Folder[];
+  tabs: Tab[];
+  activeTabId?: string | null;
+  directory?: string | null;
+}
+
+export interface Manifest {
+  version: number;
+  activeWorkspaceId?: string | null;
+  workspaces: Workspace[];
+}
+
+export interface Settings {
+  yolo: boolean;
+  fontSize: number;
+}

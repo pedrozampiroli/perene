@@ -137,9 +137,14 @@ pub enum SplitDirection {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LayoutNode {
+    // rename_all no ENUM só renomeia as VARIANTES; para os CAMPOS internos
+    // (pane_id → paneId) o rename_all precisa vir em cada variante — senão o
+    // front (TS) lê `paneId` como undefined.
+    #[serde(rename_all = "camelCase")]
     Leaf {
         pane_id: Id,
     },
+    #[serde(rename_all = "camelCase")]
     Split {
         id: Id,
         direction: SplitDirection,
@@ -335,6 +340,9 @@ mod tests {
         let json = serde_json::to_string(&node).unwrap();
         assert!(json.contains("\"type\":\"split\""));
         assert!(json.contains("\"type\":\"leaf\""));
+        // O campo da folha DEVE ir como camelCase no wire (o front lê `paneId`).
+        assert!(json.contains("\"paneId\":\"pane_a\""), "wire: {json}");
+        assert!(!json.contains("pane_id"), "não pode vazar snake_case: {json}");
         let back: LayoutNode = serde_json::from_str(&json).unwrap();
         assert_eq!(node, back);
         assert_eq!(back.leaves(), vec!["pane_a", "pane_b"]);

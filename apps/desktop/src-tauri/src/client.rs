@@ -30,11 +30,14 @@ impl DaemonClient {
         Ok(())
     }
 
+    /// Envia uma mensagem. Sem conexão ainda (ex.: um resize disparado pelo fit()
+    /// antes do primeiro spawn), vira no-op — o spawn é quem conecta e leva o
+    /// tamanho corrente; não faz sentido explodir aqui.
     fn send(&self, msg: &ClientMessage) -> Result<(), String> {
         let mut guard = self.conn.lock();
-        let writer = guard
-            .as_mut()
-            .ok_or_else(|| "sem conexão com o daemon".to_string())?;
+        let Some(writer) = guard.as_mut() else {
+            return Ok(());
+        };
         let line = encode_line(msg).map_err(|e| e.to_string())?;
         writer
             .write_all(line.as_bytes())
@@ -122,7 +125,7 @@ fn connect_or_spawn_daemon() -> Result<std::os::unix::net::UnixStream, String> {
 
     let path = perene_core::paths::daemon_endpoint();
     if let Ok(s) = UnixStream::connect(&path) {
-        return Ok(s);
+        return Ok(s); // daemon já rodando → adota
     }
     spawn_daemon()?;
     let deadline = Instant::now() + Duration::from_secs(5);

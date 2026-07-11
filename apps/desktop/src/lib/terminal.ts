@@ -1,15 +1,16 @@
-// Um pane de terminal: xterm.js ligado ao PTY do backend Rust via comandos Tauri.
+// Um pane de terminal: xterm.js ligado ao PTY do daemon via comandos Tauri.
 //
-// Decisões que dão conta dos critérios de aceite do M0:
-//  - dead keys/IME (option+e → é): xterm usa um <textarea> oculto com
-//    compositionstart/update/end; NÃO tratamos Option como Meta (macOptionIsMeta:
-//    false), então o SO compõe o acento normalmente.
-//  - shift+enter no Claude Code: enviamos LF (\n) — é o que o `/terminal-setup`
-//    do Claude configura; Enter puro manda CR (\r) e submete.
-//  - copiar/colar: Cmd+C/Cmd+V (mac) e Ctrl+Shift+C/V (win/linux) via plugin de
-//    clipboard do Tauri (robusto entre plataformas); paste passa pelo bracketed
-//    paste do xterm.
-//  - scroll/seleção/cores/vim: nativos do xterm.js.
+// Critérios de aceite cobertos (M0) + paste de imagem (M3):
+//  - dead keys/IME: xterm usa <textarea> oculto com composition events; NÃO
+//    tratamos Option como Meta (macOptionIsMeta:false).
+//  - shift+enter: envia LF (\n) — o Claude Code trata como quebra de linha.
+//  - copiar: Cmd+C (mac) / Ctrl+Shift+C (win/linux) via plugin de clipboard.
+//  - colar texto: evento nativo `paste` do webview → xterm cola (bracketed).
+//  - colar imagem: intercepta o `paste`, salva PNG em ~/.perene2/paste/ e escreve
+//    o caminho no terminal.
+//
+// dispose() NÃO mata o PTY (só o xterm local): reorganizar splits/trocar de aba
+// preserva a sessão no daemon. Fechar o pane de fato chama terminal_kill à parte.
 
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -18,15 +19,12 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import {
-  readText,
-  writeText,
-} from "@tauri-apps/plugin-clipboard-manager";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { api } from "./api";
 import { PTY_OUTPUT, PTY_EXIT } from "./events";
 
 const isMac = navigator.userAgent.toLowerCase().includes("mac");
 
-// Paleta Dark+ (VSCode) — mesmo tema-alvo do visualizador de arquivos (M5).
 const DARK_PLUS = {
   background: "#1e1e1e",
   foreground: "#d4d4d4",
@@ -58,9 +56,33 @@ function b64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
+function bytesToB64(bytes: Uint8Array): string {
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+/** Garante PNG: usa os bytes direto se já for PNG, senão converte via canvas. */
+async function ensurePng(blob: Blob): Promise<Uint8Array> {
+  if (blob.type === "image/png") {
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  const bmp = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bmp.width;
+  canvas.height = bmp.height;
+  canvas.getContext("2d")!.drawImage(bmp, 0, 0);
+  const png: Blob = await new Promise((res) => canvas.toBlob((b) => res(b!), "image/png"));
+  return new Uint8Array(await png.arrayBuffer());
+}
+
 export interface PaneOptions {
   cwd?: string | null;
   command?: string | null;
+  fontSize?: number;
 }
 
 export class PerenePane {
@@ -69,23 +91,25 @@ export class PerenePane {
   private fit = new FitAddon();
   private unlisteners: UnlistenFn[] = [];
   private resizeObserver?: ResizeObserver;
+  private container?: HTMLElement;
   private disposed = false;
 
-  constructor(paneId: string) {
+  constructor(paneId: string, fontSize = 13) {
     this.paneId = paneId;
     this.term = new Terminal({
       fontFamily: "Menlo, Monaco, 'DejaVu Sans Mono', 'Courier New', monospace",
-      fontSize: 13,
+      fontSize,
       lineHeight: 1.0,
       cursorBlink: true,
       scrollback: 10_000,
-      allowProposedApi: true, // exigido pelo addon unicode11
-      macOptionIsMeta: false, // preserva dead keys no mac
+      allowProposedApi: true,
+      macOptionIsMeta: false,
       theme: DARK_PLUS,
     });
   }
 
   async open(container: HTMLElement, opts: PaneOptions = {}): Promise<void> {
+    this.container = container;
     this.term.loadAddon(this.fit);
     this.term.loadAddon(new Unicode11Addon());
     this.term.unicode.activeVersion = "11";
@@ -94,18 +118,16 @@ export class PerenePane {
     this.term.open(container);
     this.tryEnableWebgl();
 
-    // Sincroniza tamanho do PTY com o do xterm.
     this.term.onResize(({ cols, rows }) => {
       void invoke("terminal_resize", { paneId: this.paneId, cols, rows });
     });
     this.fit.fit();
 
     this.installKeyHandler();
+    container.addEventListener("paste", this.onPaste, true);
 
-    // Input do usuário → PTY.
     this.term.onData((data) => this.send(data));
 
-    // Output do PTY → xterm (já coalescido e em base64 pelo Rust).
     this.unlisteners.push(
       await listen<{ paneId: string; dataB64: string }>(PTY_OUTPUT, (e) => {
         if (e.payload.paneId !== this.paneId) return;
@@ -119,7 +141,6 @@ export class PerenePane {
       }),
     );
 
-    // Cria o PTY do lado Rust com o tamanho atual.
     await invoke("terminal_spawn", {
       req: {
         paneId: this.paneId,
@@ -130,22 +151,25 @@ export class PerenePane {
       },
     });
 
-    // Reajusta em qualquer mudança de tamanho do container.
     this.resizeObserver = new ResizeObserver(() => this.safeFit());
     this.resizeObserver.observe(container);
+  }
 
+  focus(): void {
     this.term.focus();
   }
 
+  refit(): void {
+    this.safeFit();
+  }
+
   private tryEnableWebgl(): void {
-    // WebGL acelera muito, mas o WebKitGTK (Linux) pode não suportar — cai pro
-    // renderer DOM sem quebrar.
     try {
       const webgl = new WebglAddon();
       webgl.onContextLoss(() => webgl.dispose());
       this.term.loadAddon(webgl);
     } catch {
-      // Segue com o renderer DOM padrão.
+      // renderer DOM padrão.
     }
   }
 
@@ -156,18 +180,8 @@ export class PerenePane {
       const copyCombo = isMac
         ? e.metaKey && !e.shiftKey && e.code === "KeyC"
         : e.ctrlKey && e.shiftKey && e.code === "KeyC";
-      const pasteCombo = isMac
-        ? e.metaKey && !e.shiftKey && e.code === "KeyV"
-        : e.ctrlKey && e.shiftKey && e.code === "KeyV";
-
       if (copyCombo && this.term.hasSelection()) {
         void writeText(this.term.getSelection());
-        return false;
-      }
-      if (pasteCombo) {
-        void readText().then((t) => {
-          if (t) this.term.paste(t);
-        });
         return false;
       }
       // Shift+Enter → nova linha (Claude Code trata \n como quebra).
@@ -175,9 +189,34 @@ export class PerenePane {
         this.send("\n");
         return false;
       }
+      // Colar (texto) fica com o handler nativo de `paste` do webview.
       return true;
     });
   }
+
+  private onPaste = async (e: ClipboardEvent): Promise<void> => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    let image: DataTransferItem | undefined;
+    for (const it of items) {
+      if (it.type.startsWith("image/")) {
+        image = it;
+        break;
+      }
+    }
+    if (!image) return; // texto → deixa o xterm colar normalmente
+    e.preventDefault();
+    e.stopPropagation();
+    const blob = image.getAsFile();
+    if (!blob) return;
+    try {
+      const png = await ensurePng(blob);
+      const path = await api.savePasteImage(bytesToB64(png));
+      this.send(path + " ");
+    } catch {
+      // silencioso: se falhar, nada é colado.
+    }
+  };
 
   private send(data: string): void {
     void invoke("terminal_write", { paneId: this.paneId, data });
@@ -188,16 +227,17 @@ export class PerenePane {
     try {
       this.fit.fit();
     } catch {
-      // container pode estar oculto/0x0 momentaneamente.
+      // container oculto/0x0 momentaneamente.
     }
   }
 
+  /** Encerra o xterm local. NÃO mata o PTY (isso é feito no fechamento do pane). */
   dispose(): void {
     this.disposed = true;
     this.resizeObserver?.disconnect();
+    this.container?.removeEventListener("paste", this.onPaste, true);
     for (const un of this.unlisteners) un();
     this.unlisteners = [];
-    void invoke("terminal_kill", { paneId: this.paneId }).catch(() => {});
     this.term.dispose();
   }
 }

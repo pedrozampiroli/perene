@@ -8,11 +8,13 @@ use uuid::Uuid;
 
 pub mod models;
 pub mod paths;
+pub mod settings;
 pub mod store;
 
 pub use models::{
     Folder, LayoutNode, Manifest, Pane, PaneKind, SplitDirection, Tab, Workspace,
 };
+pub use settings::{Settings, SettingsStore};
 pub use store::ManifestStore;
 
 /// Versão do formato de manifest gravado em disco. Bump só com migração.
