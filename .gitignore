@@ -13,6 +13,7 @@ apps/desktop/src-tauri/gen
 
 # OS
 .DS_Store
+*/.DS_Store
 Thumbs.db
 
 # Estado local do app (não deve existir no repo, mas por garantia)
