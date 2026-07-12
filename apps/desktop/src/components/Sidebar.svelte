@@ -1,57 +1,13 @@
 <script lang="ts">
-  import {
-    Plus,
-    FolderPlus,
-    ChevronRight,
-    ChevronDown,
-    X,
-    Folder,
-    FolderOpen,
-    FolderCog,
-  } from "@lucide/svelte";
+  import { Plus, FolderPlus, ChevronRight, ChevronDown, X, Folder, FolderOpen, FolderCog } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
   import type { Tab } from "../lib/types";
 
   const ws = $derived(app.activeWorkspace);
 
-  type Editing = { type: "ws" | "folder" | "tab"; id: string } | null;
-  let editing = $state<Editing>(null);
-  let editValue = $state("");
-
-  function startEdit(type: "ws" | "folder" | "tab", id: string, current: string) {
-    editing = { type, id };
-    editValue = current;
-  }
-  function commitEdit() {
-    if (!editing) return;
-    const v = editValue.trim();
-    if (v) {
-      if (editing.type === "ws") app.renameWorkspace(editing.id, v);
-      else if (editing.type === "folder") app.renameFolder(editing.id, v);
-      else app.renameTab(editing.id, v);
-    }
-    editing = null;
-  }
-  function onEditKey(e: KeyboardEvent) {
-    if (e.key === "Enter") commitEdit();
-    else if (e.key === "Escape") editing = null;
-  }
-
-  async function newWorkspace() {
-    const id = await app.createWorkspaceInteractive();
-    if (id) {
-      const w = app.manifest.workspaces.find((w) => w.id === id);
-      if (w) startEdit("ws", id, w.name);
-    }
-  }
-  function newFolder() {
-    const id = app.createFolder("Nova pasta");
-    if (id) startEdit("folder", id, "Nova pasta");
-  }
-
   function shortPath(p?: string | null): string {
-    if (!p) return "";
+    if (!p) return "(sem pasta)";
     const parts = p.split("/").filter(Boolean);
     return parts.length <= 2 ? "/" + parts.join("/") : "…/" + parts.slice(-2).join("/");
   }
@@ -79,7 +35,7 @@
 <div class="sidebar">
   <div class="section-head">
     <span>Workspaces</span>
-    <button class="add" title="Novo workspace (escolher pasta)" onclick={newWorkspace}><Plus size={15} /></button>
+    <button class="add" title="Novo workspace" onclick={() => app.openNewWorkspaceModal()}><Plus size={15} /></button>
   </div>
   <div class="workspaces">
     {#each app.manifest.workspaces as w (w.id)}
@@ -87,18 +43,13 @@
         class="ws-row"
         class:active={w.id === ws?.id}
         onclick={() => app.selectWorkspace(w.id)}
-        ondblclick={() => startEdit("ws", w.id, w.name)}
+        ondblclick={() => app.openRenameModal("ws", w.id, w.name)}
         role="button"
         tabindex="0"
       >
-        {#if editing?.type === "ws" && editing.id === w.id}
-          <!-- svelte-ignore a11y_autofocus -->
-          <input bind:value={editValue} onblur={commitEdit} onkeydown={onEditKey} autofocus />
-        {:else}
-          <span class="name">{w.name}</span>
-          {#if app.manifest.workspaces.length > 1}
-            <button class="mini" title="Remover workspace" onclick={(e) => { e.stopPropagation(); app.deleteWorkspace(w.id); }}><X size={13} /></button>
-          {/if}
+        <span class="name">{w.name}</span>
+        {#if app.manifest.workspaces.length > 1}
+          <button class="mini" title="Remover workspace" onclick={(e) => { e.stopPropagation(); app.deleteWorkspace(w.id); }}><X size={13} /></button>
         {/if}
       </div>
     {/each}
@@ -112,26 +63,27 @@
 
   <div class="section-head">
     <span>Abas</span>
-    <button class="add" title="Nova pasta" onclick={newFolder}><FolderPlus size={15} /></button>
+    <button class="add" title="Nova pasta" onclick={() => app.openNewFolderModal()}><FolderPlus size={15} /></button>
   </div>
 
   <div class="tree" ondragover={allowDrop} ondrop={(e) => dropOnFolder(e, null)}>
     {#if ws}
       {#each ws.folders as folder (folder.id)}
         <div class="folder" ondragover={allowDrop} ondrop={(e) => dropOnFolder(e, folder.id)} role="group">
-          <div class="folder-head" onclick={() => app.toggleFolder(folder.id)} role="button" tabindex="0">
+          <div
+            class="folder-head"
+            onclick={() => app.toggleFolder(folder.id)}
+            ondblclick={(e) => { e.stopPropagation(); app.openRenameModal("folder", folder.id, folder.name); }}
+            role="button"
+            tabindex="0"
+          >
             <span class="caret">
               {#if folder.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
             </span>
             {#if folder.collapsed}<Folder size={14} class="ficon" />{:else}<FolderOpen size={14} class="ficon" />{/if}
-            {#if editing?.type === "folder" && editing.id === folder.id}
-              <!-- svelte-ignore a11y_autofocus -->
-              <input bind:value={editValue} onblur={commitEdit} onkeydown={onEditKey} autofocus onclick={(e) => e.stopPropagation()} />
-            {:else}
-              <span class="fname" ondblclick={(e) => { e.stopPropagation(); startEdit("folder", folder.id, folder.name); }}>{folder.name}</span>
-              <button class="mini" title="Definir pasta do diretório" onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
-              <button class="mini" title="Remover pasta" onclick={(e) => { e.stopPropagation(); app.deleteFolder(folder.id); }}><X size={12} /></button>
-            {/if}
+            <span class="fname">{folder.name}</span>
+            <button class="mini" title="Definir diretório da pasta" onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
+            <button class="mini" title="Remover pasta" onclick={(e) => { e.stopPropagation(); app.deleteFolder(folder.id); }}><X size={12} /></button>
           </div>
           {#if !folder.collapsed}
             {#each app.tabsInFolder(ws, folder.id) as tab (tab.id)}
@@ -159,17 +111,13 @@
     ondragover={allowDrop}
     ondrop={(e) => dropOnTab(e, tab)}
     onclick={() => app.selectTab(tab.id)}
+    ondblclick={(e) => { e.stopPropagation(); app.openRenameModal("tab", tab.id, tab.title); }}
     role="button"
     tabindex="0"
   >
     <span class="ticon" style="color:{prof.color}"><Icon size={14} /></span>
-    {#if editing?.type === "tab" && editing.id === tab.id}
-      <!-- svelte-ignore a11y_autofocus -->
-      <input bind:value={editValue} onblur={commitEdit} onkeydown={onEditKey} autofocus onclick={(e) => e.stopPropagation()} />
-    {:else}
-      <span class="ttitle" ondblclick={(e) => { e.stopPropagation(); startEdit("tab", tab.id, tab.title); }}>{tab.title}</span>
-      <button class="mini" title="Fechar aba" onclick={(e) => { e.stopPropagation(); app.closeTab(tab.id); }}><X size={12} /></button>
-    {/if}
+    <span class="ttitle">{tab.title}</span>
+    <button class="mini" title="Fechar aba" onclick={(e) => { e.stopPropagation(); app.closeTab(tab.id); }}><X size={12} /></button>
   </div>
 {/snippet}
 
@@ -279,6 +227,7 @@
   }
   .caret {
     display: flex;
+    align-items: center;
     color: #8a8a8a;
     flex: 0 0 auto;
   }
@@ -305,16 +254,5 @@
   .mini:hover {
     color: #eee;
     background: #4a4a4a;
-  }
-  input {
-    flex: 1 1 auto;
-    background: #1e1e1e;
-    border: 1px solid #007acc;
-    color: #fff;
-    font-size: 13px;
-    padding: 2px 4px;
-    border-radius: 3px;
-    outline: none;
-    min-width: 0;
   }
 </style>

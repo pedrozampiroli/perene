@@ -7,7 +7,9 @@ export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
   server: {
-    port: 5173,
+    // Porta distinta da default (5173) pra não colidir com outros projetos
+    // Tauri rodando em paralelo.
+    port: 5273,
     strictPort: true,
     watch: {
       ignored: ["**/src-tauri/**"],

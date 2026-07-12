@@ -2,12 +2,14 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  Commit,
   DirEntry,
   GitStatus,
   Manifest,
   SessionRecord,
   Settings,
   UsageStats,
+  Worktree,
 } from "./types";
 
 export const api = {
@@ -37,4 +39,10 @@ export const api = {
   gitFetch: (root: string) => invoke<void>("git_fetch", { root }),
   gitPull: (root: string) => invoke<string>("git_pull", { root }),
   gitOpenPr: (root: string) => invoke<void>("git_open_pr", { root }),
+  gitLog: (root: string, limit = 50) => invoke<Commit[]>("git_log", { root, limit }),
+  gitShow: (root: string, hash: string) => invoke<string>("git_show", { root, hash }),
+  gitCommit: (root: string, message: string) => invoke<string>("git_commit", { root, message }),
+  gitWorktreeList: (root: string) => invoke<Worktree[]>("git_worktree_list", { root }),
+  gitWorktreeAdd: (root: string, path: string, branch: string, create: boolean) =>
+    invoke<string>("git_worktree_add", { root, path, branch, create }),
 };

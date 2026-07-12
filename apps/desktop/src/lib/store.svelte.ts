@@ -96,6 +96,15 @@ function leavesOf(node: LayoutNode): string[] {
   return node.type === "leaf" ? [node.paneId] : node.children.flatMap(leavesOf);
 }
 
+export interface NameModal {
+  kind: "newWorkspace" | "newFolder" | "rename";
+  target?: { type: "ws" | "folder" | "tab"; id: string };
+  title: string;
+  name: string;
+  directory: string | null;
+  showDirectory: boolean;
+}
+
 class AppStore {
   manifest = $state<Manifest>({ version: 3, activeWorkspaceId: null, workspaces: [] });
   settings = $state<Settings>({ yolo: false, fontSize: 13, webgl: false });
@@ -104,6 +113,7 @@ class AppStore {
   settingsOpen = $state(false);
   historyOpen = $state(false);
   usageOpen = $state(false);
+  nameModal = $state<NameModal | null>(null);
   home = "";
 
   /** Panes criados NESTA sessão (spawn fresco). Os demais, ao serem restaurados
@@ -189,12 +199,7 @@ class AppStore {
     return typeof res === "string" ? res : null;
   }
 
-  /** Novo workspace: escolhe a pasta do projeto (picker), nome vem do basename
-   *  (editável em seguida). Devolve o id para a UI abrir o rename inline. */
-  async createWorkspaceInteractive(): Promise<string | null> {
-    const dir = await this.pickDirectory(this.home);
-    if (!dir) return null;
-    const name = dir.split("/").filter(Boolean).pop() || "Workspace";
+  createWorkspaceNamed(name: string, dir: string): void {
     const ws: Workspace = {
       id: newId("ws"),
       name,
@@ -208,7 +213,56 @@ class AppStore {
     this.manifest.activeWorkspaceId = ws.id;
     this.createTab("shell");
     this.save();
-    return ws.id;
+  }
+
+  // ── Modais de nomeação ─────────────────────────────────────────────────────
+  openNewWorkspaceModal(): void {
+    this.nameModal = {
+      kind: "newWorkspace",
+      title: "Novo workspace",
+      name: "",
+      directory: this.home,
+      showDirectory: true,
+    };
+  }
+  openNewFolderModal(): void {
+    this.nameModal = {
+      kind: "newFolder",
+      title: "Nova pasta",
+      name: "",
+      directory: null,
+      showDirectory: false,
+    };
+  }
+  openRenameModal(type: "ws" | "folder" | "tab", id: string, current: string): void {
+    const title = type === "ws" ? "Renomear workspace" : type === "folder" ? "Renomear pasta" : "Renomear aba";
+    this.nameModal = { kind: "rename", target: { type, id }, title, name: current, directory: null, showDirectory: false };
+  }
+  async pickModalDirectory(): Promise<void> {
+    const m = this.nameModal;
+    if (!m) return;
+    const dir = await this.pickDirectory(m.directory ?? this.home);
+    if (dir) {
+      m.directory = dir;
+      if (!m.name.trim()) m.name = dir.split("/").filter(Boolean).pop() ?? "";
+    }
+  }
+  confirmNameModal(): void {
+    const m = this.nameModal;
+    if (!m) return;
+    const name = m.name.trim();
+    if (m.kind === "newWorkspace") {
+      if (name && m.directory) this.createWorkspaceNamed(name, m.directory);
+    } else if (m.kind === "newFolder") {
+      this.createFolder(name || "Nova pasta");
+    } else if (m.kind === "rename" && m.target) {
+      if (name) {
+        if (m.target.type === "ws") this.renameWorkspace(m.target.id, name);
+        else if (m.target.type === "folder") this.renameFolder(m.target.id, name);
+        else this.renameTab(m.target.id, name);
+      }
+    }
+    this.nameModal = null;
   }
 
   async changeWorkspaceDirectory(id: string): Promise<void> {

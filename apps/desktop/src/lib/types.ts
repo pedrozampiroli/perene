@@ -104,3 +104,17 @@ export interface GitStatus {
   dirty: boolean;
   files: GitFile[];
 }
+
+export interface Commit {
+  hash: string;
+  short: string;
+  subject: string;
+  author: string;
+  date: string;
+}
+
+export interface Worktree {
+  path: string;
+  branch: string;
+  head: string;
+}

@@ -43,6 +43,11 @@ pub fn run() {
             files::git_fetch,
             files::git_pull,
             files::git_open_pr,
+            files::git_log,
+            files::git_show,
+            files::git_commit,
+            files::git_worktree_list,
+            files::git_worktree_add,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Perene");

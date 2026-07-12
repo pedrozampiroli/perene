@@ -1,20 +1,30 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { GitBranch, RefreshCw, ArrowDownToLine, GitPullRequestArrow, X } from "@lucide/svelte";
+  import {
+    GitBranch,
+    RefreshCw,
+    ArrowDownToLine,
+    GitPullRequestArrow,
+    GitCommitHorizontal,
+    FolderGit2,
+    Check,
+    X,
+  } from "@lucide/svelte";
   import type { EditorView } from "@codemirror/view";
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
   import { createEditor } from "../lib/editor";
-  import type { DirEntry, GitStatus } from "../lib/types";
+  import type { Commit, DirEntry, GitStatus, Worktree } from "../lib/types";
   import FileTree from "./FileTree.svelte";
 
   let { paneId }: { paneId: string } = $props();
 
   const root = $derived(app.findPane(paneId)?.workingDirectory ?? app.home);
 
+  type FTab = "files" | "changes" | "commits" | "worktrees";
   let gs = $state<GitStatus | null>(null);
   let rootEntries = $state<DirEntry[]>([]);
-  let tab = $state<"files" | "changes">("files");
+  let tab = $state<FTab>("files");
   let mode = $state<"edit" | "diff">("edit");
   let selected = $state<string | null>(null);
   let currentContent = $state("");
@@ -23,6 +33,56 @@
   let branchMenu = $state(false);
   let newBranch = $state("");
   let msg = $state("");
+
+  let commits = $state<Commit[]>([]);
+  let worktrees = $state<Worktree[]>([]);
+  let commitMsg = $state("");
+  let wtPath = $state("");
+  let wtBranch = $state("");
+  let wtCreate = $state(true);
+
+  async function switchTab(t: FTab) {
+    tab = t;
+    if (t === "commits" && gs?.root) commits = await api.gitLog(gs.root, 60).catch(() => []);
+    if (t === "worktrees" && gs?.root) worktrees = await api.gitWorktreeList(gs.root).catch(() => []);
+  }
+
+  async function showCommit(c: Commit) {
+    if (!gs?.root) return;
+    selected = c.short;
+    mode = "diff";
+    diffText = "carregando…";
+    diffText = await api.gitShow(gs.root, c.hash).catch((e) => "erro: " + e);
+  }
+
+  async function doCommit() {
+    const m = commitMsg.trim();
+    if (!m || !gs?.root) return;
+    try {
+      await api.gitCommit(gs.root, m);
+      commitMsg = "";
+      flash("commit feito");
+      await loadStatus();
+      commits = await api.gitLog(gs.root, 60).catch(() => []);
+    } catch (e) {
+      flash(String(e));
+    }
+  }
+
+  async function createWorktree() {
+    const p = wtPath.trim();
+    const b = wtBranch.trim();
+    if (!p || !b || !gs?.root) return;
+    try {
+      await api.gitWorktreeAdd(gs.root, p, b, wtCreate);
+      flash("worktree criado");
+      wtPath = "";
+      wtBranch = "";
+      worktrees = await api.gitWorktreeList(gs.root).catch(() => []);
+    } catch (e) {
+      flash(String(e));
+    }
+  }
 
   let editorHost = $state<HTMLElement>();
   let editorView: EditorView | undefined;
@@ -186,10 +246,14 @@
   </div>
 
   <div class="tabs">
-    <button class:active={tab === "files"} onclick={() => (tab = "files")}>Files</button>
-    <button class:active={tab === "changes"} onclick={() => (tab = "changes")}>
-      Changes{#if gs && gs.files.length}<span class="count">{gs.files.length}</span>{/if}
+    <button class:active={tab === "files"} onclick={() => switchTab("files")}>Arquivos</button>
+    <button class:active={tab === "changes"} onclick={() => switchTab("changes")}>
+      Mudanças{#if gs && gs.files.length}<span class="count">{gs.files.length}</span>{/if}
     </button>
+    {#if gs?.isRepo}
+      <button class:active={tab === "commits"} onclick={() => switchTab("commits")}>Commits</button>
+      <button class:active={tab === "worktrees"} onclick={() => switchTab("worktrees")}>Worktrees</button>
+    {/if}
   </div>
 
   <div class="body">
@@ -198,15 +262,51 @@
         {#each rootEntries as entry (entry.path)}
           <FileTree {entry} {statusMap} onOpen={openFile} {selected} />
         {/each}
-      {:else if gs && gs.files.length}
-        {#each gs.files as f (f.path)}
-          <div class="change" class:sel={selected === (gs.root ? gs.root + "/" + f.path : f.path)} onclick={() => openDiff(f.path)} role="button" tabindex="0">
-            <span class="st">{f.status.trim() || "?"}</span>
-            <span class="cpath">{f.path}</span>
+      {:else if tab === "changes"}
+        {#if gs?.isRepo}
+          <div class="commitbox">
+            <input placeholder="mensagem do commit…" bind:value={commitMsg} onkeydown={(e) => e.key === "Enter" && doCommit()} />
+            <button title="git add -A && git commit" disabled={!commitMsg.trim() || !gs.files.length} onclick={doCommit}>
+              <GitCommitHorizontal size={14} /> Commit ({gs.files.length})
+            </button>
           </div>
+        {/if}
+        {#if gs && gs.files.length}
+          {#each gs.files as f (f.path)}
+            <div class="change" class:sel={selected === (gs.root ? gs.root + "/" + f.path : f.path)} onclick={() => openDiff(f.path)} role="button" tabindex="0">
+              <span class="st">{f.status.trim() || "?"}</span>
+              <span class="cpath">{f.path}</span>
+            </div>
+          {/each}
+        {:else}
+          <div class="empty">Nenhuma mudança.</div>
+        {/if}
+      {:else if tab === "commits"}
+        {#each commits as c (c.hash)}
+          <div class="commit" class:sel={selected === c.short} onclick={() => showCommit(c)} role="button" tabindex="0">
+            <div class="csubj">{c.subject}</div>
+            <div class="cmeta">{c.short} · {c.author} · {c.date}</div>
+          </div>
+        {:else}
+          <div class="empty">Sem commits.</div>
         {/each}
-      {:else}
-        <div class="empty">Nenhuma mudança.</div>
+      {:else if tab === "worktrees"}
+        <div class="wtform">
+          <input placeholder="caminho do worktree…" bind:value={wtPath} />
+          <input placeholder="branch" bind:value={wtBranch} />
+          <label class="wtchk"><input type="checkbox" bind:checked={wtCreate} /> criar branch novo</label>
+          <button disabled={!wtPath.trim() || !wtBranch.trim()} onclick={createWorktree}>
+            <FolderGit2 size={14} /> Criar worktree
+          </button>
+        </div>
+        {#each worktrees as w (w.path)}
+          <div class="wt">
+            <div class="wtbranch">{w.branch || "(detached)"} <span class="wthead">{w.head}</span></div>
+            <div class="wtpath">{w.path}</div>
+          </div>
+        {:else}
+          <div class="empty">Nenhum worktree.</div>
+        {/each}
       {/if}
     </div>
 
@@ -401,6 +501,111 @@
     font-family: monospace;
   }
   .cpath {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .commitbox {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid #2a2a2a;
+    margin-bottom: 4px;
+  }
+  .commitbox input {
+    background: #1e1e1e;
+    border: 1px solid #3a3a3a;
+    color: #fff;
+    border-radius: 5px;
+    padding: 5px 8px;
+    outline: none;
+    font-size: 12px;
+  }
+  .commitbox button,
+  .wtform button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    background: #0e639c;
+    border: none;
+    color: #fff;
+    border-radius: 5px;
+    padding: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .commitbox button:disabled,
+  .wtform button:disabled {
+    background: #333;
+    color: #777;
+    cursor: default;
+  }
+  .commit {
+    padding: 6px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+  }
+  .commit:hover {
+    background: #2a2d2e;
+  }
+  .commit.sel {
+    background: #37373d;
+    border-left-color: #007acc;
+  }
+  .csubj {
+    font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cmeta {
+    font-size: 10.5px;
+    color: #8a8a8a;
+    margin-top: 2px;
+  }
+  .wtform {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid #2a2a2a;
+    margin-bottom: 4px;
+  }
+  .wtform input[type="text"],
+  .wtform input:not([type]) {
+    background: #1e1e1e;
+    border: 1px solid #3a3a3a;
+    color: #fff;
+    border-radius: 5px;
+    padding: 5px 8px;
+    outline: none;
+    font-size: 12px;
+  }
+  .wtchk {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: #b8b8b8;
+  }
+  .wt {
+    padding: 6px 10px;
+  }
+  .wtbranch {
+    font-size: 12.5px;
+    color: #4ec9b0;
+  }
+  .wthead {
+    color: #7a7a7a;
+    font-family: monospace;
+    font-size: 11px;
+  }
+  .wtpath {
+    font-size: 11px;
+    color: #8a8a8a;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

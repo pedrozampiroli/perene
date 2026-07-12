@@ -216,6 +216,120 @@ pub fn git_open_pr(root: String) -> Result<(), String> {
     run(&["pr", "view", "--web"]).or_else(|_| run(&["pr", "create", "--web"]))
 }
 
+// ── Commits ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Commit {
+    pub hash: String,
+    pub short: String,
+    pub subject: String,
+    pub author: String,
+    pub date: String,
+}
+
+/// Últimos `limit` commits do branch atual.
+#[tauri::command]
+pub fn git_log(root: String, limit: u32) -> Result<Vec<Commit>, String> {
+    // Separador 0x1f entre campos, 0x1e entre commits.
+    let fmt = "--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ad%x1e";
+    let raw = git(&root, &["log", &format!("-n{limit}"), "--date=short", fmt])?;
+    Ok(raw
+        .split('\u{1e}')
+        .filter_map(|rec| {
+            let rec = rec.trim_start_matches('\n');
+            if rec.trim().is_empty() {
+                return None;
+            }
+            let f: Vec<&str> = rec.split('\u{1f}').collect();
+            if f.len() < 5 {
+                return None;
+            }
+            Some(Commit {
+                hash: f[0].to_string(),
+                short: f[1].to_string(),
+                subject: f[2].to_string(),
+                author: f[3].to_string(),
+                date: f[4].to_string(),
+            })
+        })
+        .collect())
+}
+
+/// Diff completo de um commit (`git show`).
+#[tauri::command]
+pub fn git_show(root: String, hash: String) -> Result<String, String> {
+    git(&root, &["show", "--no-color", &hash])
+}
+
+/// Faz `add -A` + `commit -m`. Devolve a saída do commit.
+#[tauri::command]
+pub fn git_commit(root: String, message: String) -> Result<String, String> {
+    git(&root, &["add", "-A"])?;
+    git(&root, &["commit", "-m", &message])
+}
+
+// ── Worktrees ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Worktree {
+    pub path: String,
+    pub branch: String,
+    pub head: String,
+}
+
+#[tauri::command]
+pub fn git_worktree_list(root: String) -> Result<Vec<Worktree>, String> {
+    let raw = git(&root, &["worktree", "list", "--porcelain"])?;
+    let mut out = Vec::new();
+    let mut cur: Option<Worktree> = None;
+    for line in raw.lines() {
+        if let Some(p) = line.strip_prefix("worktree ") {
+            if let Some(w) = cur.take() {
+                out.push(w);
+            }
+            cur = Some(Worktree {
+                path: p.to_string(),
+                branch: String::new(),
+                head: String::new(),
+            });
+        } else if let Some(h) = line.strip_prefix("HEAD ") {
+            if let Some(w) = cur.as_mut() {
+                w.head = h.chars().take(8).collect();
+            }
+        } else if let Some(b) = line.strip_prefix("branch ") {
+            if let Some(w) = cur.as_mut() {
+                w.branch = b.trim_start_matches("refs/heads/").to_string();
+            }
+        } else if line == "detached" {
+            if let Some(w) = cur.as_mut() {
+                w.branch = "(detached)".to_string();
+            }
+        }
+    }
+    if let Some(w) = cur.take() {
+        out.push(w);
+    }
+    Ok(out)
+}
+
+/// Cria um worktree. `create=true` cria um branch novo (`-b`); senão faz checkout
+/// de um branch existente naquele caminho.
+#[tauri::command]
+pub fn git_worktree_add(
+    root: String,
+    path: String,
+    branch: String,
+    create: bool,
+) -> Result<String, String> {
+    if create {
+        git(&root, &["worktree", "add", "-b", &branch, &path])
+    } else {
+        git(&root, &["worktree", "add", &path, &branch])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
