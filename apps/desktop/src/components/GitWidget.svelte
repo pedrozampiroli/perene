@@ -8,6 +8,8 @@
     GitPullRequestArrow,
     FolderTree,
     Check,
+    ChevronRight,
+    Plus,
   } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
@@ -15,7 +17,9 @@
 
   let gs = $state<GitStatus | null>(null);
   let menu = $state(false);
+  let showBranches = $state(false);
   let branches = $state<string[]>([]);
+  let newBranch = $state("");
   let msg = $state("");
   let msgTimer: ReturnType<typeof setTimeout>;
 
@@ -53,6 +57,7 @@
 
   async function toggleMenu() {
     menu = !menu;
+    showBranches = false;
     if (menu && gs?.root) {
       try {
         branches = await api.gitBranches(gs.root);
@@ -60,6 +65,13 @@
         branches = [];
       }
     }
+  }
+
+  async function createBranch() {
+    const b = newBranch.trim();
+    if (!b) return;
+    newBranch = "";
+    await act((r) => api.gitCreateBranch(r, b), "criado " + b);
   }
 
   function flash(t: string) {
@@ -95,21 +107,35 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="backdrop" onclick={() => (menu = false)}></div>
       <div class="menu">
-        <button onclick={() => act((r) => api.gitFetch(r), "fetch ok")}><RefreshCw size={13} /> Fetch</button>
-        <button onclick={() => act((r) => api.gitPull(r), "pull ok")}><ArrowDownToLine size={13} /> Pull</button>
-        <button onclick={() => act((r) => api.gitPush(r), "push ok")}><ArrowUpToLine size={13} /> Push</button>
-        <button onclick={() => act((r) => api.gitOpenPr(r), "PR aberto")}><GitPullRequestArrow size={13} /> Abrir PR</button>
-        <button onclick={() => { app.openFilesTab(); menu = false; }}><FolderTree size={13} /> Painel de arquivos</button>
-        <div class="sep"></div>
-        <div class="mlabel">Branches</div>
-        <div class="blist">
-          {#each branches as b (b)}
-            <button class="bitem" onclick={() => act((r) => api.gitCheckout(r, b), "→ " + b)}>
-              {#if b === gs.branch}<Check size={13} />{:else}<span class="sp"></span>{/if}
-              {b}
-            </button>
-          {/each}
+        <button class="row" onclick={() => (showBranches = !showBranches)}>
+          <span class="l"><GitBranch size={13} /> Trocar de branch</span>
+          <ChevronRight size={14} style="transform: rotate({showBranches ? 90 : 0}deg)" />
+        </button>
+        {#if showBranches}
+          <div class="blist">
+            {#each branches as b (b)}
+              <button class="bitem" onclick={() => act((r) => api.gitCheckout(r, b), "→ " + b)}>
+                {#if b === gs.branch}<Check size={13} />{:else}<span class="sp"></span>{/if}
+                {b}
+              </button>
+            {:else}
+              <div class="mempty">sem branches</div>
+            {/each}
+          </div>
+        {/if}
+        <div class="newb">
+          <input placeholder="Novo branch…" bind:value={newBranch} onkeydown={(e) => e.key === "Enter" && createBranch()} />
+          <button class="plus" title="Criar branch" onclick={createBranch}><Plus size={14} /></button>
         </div>
+
+        <div class="sep"></div>
+        <button onclick={() => act((r) => api.gitFetch(r), "fetch ok")}><RefreshCw size={13} /> Fetch</button>
+        <button onclick={() => act((r) => api.gitPull(r), "pull ok")}><ArrowDownToLine size={13} /> Pull (fast-forward)</button>
+        <button onclick={() => act((r) => api.gitPush(r), "push ok")}><ArrowUpToLine size={13} /> Push</button>
+
+        <div class="sep"></div>
+        <button onclick={() => act((r) => api.gitOpenPr(r), "PR aberto")}><GitPullRequestArrow size={13} /> Pull Requests…</button>
+        <button onclick={() => { app.openFilesTab(); menu = false; }}><FolderTree size={13} /> Painel de arquivos</button>
       </div>
     {/if}
   </div>
@@ -196,6 +222,49 @@
   }
   .menu > button:hover {
     background: #2a2d2e;
+  }
+  .menu > button.row {
+    justify-content: space-between;
+  }
+  .row .l {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .newb {
+    display: flex;
+    gap: 5px;
+    padding: 4px 6px 2px;
+  }
+  .newb input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: #1e1e1e;
+    border: 1px solid #3a3a3a;
+    color: #fff;
+    border-radius: 5px;
+    padding: 5px 8px;
+    outline: none;
+    font-size: 12px;
+  }
+  .plus {
+    display: flex;
+    align-items: center;
+    background: #333;
+    border: none;
+    color: #ccc;
+    border-radius: 5px;
+    padding: 0 8px;
+    cursor: pointer;
+  }
+  .plus:hover {
+    background: #3f3f46;
+    color: #fff;
+  }
+  .mempty {
+    padding: 4px 12px;
+    font-size: 11px;
+    color: #7a7a7a;
   }
   .sep {
     height: 1px;
