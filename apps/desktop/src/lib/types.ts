@@ -65,6 +65,12 @@ export interface Settings {
   yolo: boolean;
   fontSize: number;
   webgl: boolean;
+  shell: string; // "" = padrão do sistema
+}
+
+export interface ShellOption {
+  path: string;
+  label: string;
 }
 
 export interface SessionRecord {

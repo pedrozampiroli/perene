@@ -23,6 +23,9 @@ pub struct SpawnRequest {
     /// Comando a rodar antes de cair no shell interativo. `None` = login shell puro.
     #[serde(default)]
     pub command: Option<String>,
+    /// Programa do shell (ex.: `/bin/bash`, `wsl.exe`). `None` = padrão do sistema.
+    #[serde(default)]
+    pub shell: Option<String>,
 }
 
 /// Chunk de saída do PTY (coalescido por frame no lado Rust), já em base64.

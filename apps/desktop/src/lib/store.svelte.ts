@@ -107,7 +107,7 @@ export interface NameModal {
 
 class AppStore {
   manifest = $state<Manifest>({ version: 3, activeWorkspaceId: null, workspaces: [] });
-  settings = $state<Settings>({ yolo: false, fontSize: 13, webgl: false });
+  settings = $state<Settings>({ yolo: false, fontSize: 13, webgl: false, shell: "" });
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
   settingsOpen = $state(false);
@@ -175,6 +175,10 @@ class AppStore {
   }
   toggleWebgl(): void {
     this.settings.webgl = !this.settings.webgl;
+    this.saveSettings();
+  }
+  setShell(path: string): void {
+    this.settings.shell = path;
     this.saveSettings();
   }
   setFontSize(size: number): void {

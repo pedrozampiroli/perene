@@ -7,7 +7,8 @@ use perene_protocol::SpawnRequest;
 
 /// Monta o `CommandBuilder` com PATH/aliases carregados e TERM/cwd corretos.
 pub fn build_command(req: &SpawnRequest) -> CommandBuilder {
-    let mut cmd = platform_shell(req.command.as_deref());
+    let shell_override = req.shell.as_deref().filter(|s| !s.is_empty());
+    let mut cmd = platform_shell(shell_override, req.command.as_deref());
     let cwd = req
         .cwd
         .clone()
@@ -21,8 +22,11 @@ pub fn build_command(req: &SpawnRequest) -> CommandBuilder {
 }
 
 #[cfg(not(windows))]
-fn platform_shell(command: Option<&str>) -> CommandBuilder {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+fn platform_shell(shell_override: Option<&str>, command: Option<&str>) -> CommandBuilder {
+    // Shell escolhido nas configurações, ou `$SHELL`, ou zsh.
+    let shell = shell_override
+        .map(String::from)
+        .unwrap_or_else(|| std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string()));
     let mut cmd = CommandBuilder::new(&shell);
     match command {
         // Login shell puro; o PTY já o deixa interativo → carrega o profile.
@@ -40,14 +44,27 @@ fn platform_shell(command: Option<&str>) -> CommandBuilder {
 }
 
 #[cfg(windows)]
-fn platform_shell(command: Option<&str>) -> CommandBuilder {
-    let mut cmd = CommandBuilder::new("powershell.exe");
-    cmd.arg("-NoLogo");
-    if let Some(c) = command {
-        cmd.arg("-NoExit");
-        cmd.arg("-Command");
-        cmd.arg(c);
+fn platform_shell(shell_override: Option<&str>, command: Option<&str>) -> CommandBuilder {
+    let prog = shell_override.unwrap_or("powershell.exe").to_string();
+    let mut cmd = CommandBuilder::new(&prog);
+    let lower = prog.to_lowercase();
+    if lower.ends_with("powershell.exe") || lower.ends_with("pwsh.exe") {
+        cmd.arg("-NoLogo");
+        if let Some(c) = command {
+            cmd.arg("-NoExit");
+            cmd.arg("-Command");
+            cmd.arg(c);
+        }
+    } else if lower.ends_with("bash.exe") {
+        // Git Bash / WSL bash: login interativo.
+        cmd.arg("-l");
+        cmd.arg("-i");
+        if let Some(c) = command {
+            cmd.arg("-c");
+            cmd.arg(format!("{c}; exec \"{prog}\" -l -i"));
+        }
     }
+    // wsl.exe / cmd.exe: sem args extras (abrem o shell padrão).
     cmd
 }
 

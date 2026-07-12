@@ -16,6 +16,10 @@ pub struct Settings {
     /// terminais o WebContent passa de 270 MB). Desligado por padrão para caber
     /// no alvo de RAM; o usuário pode ligar se preferir performance.
     pub webgl: bool,
+    /// Programa do shell a usar (ex.: `/bin/bash`, `wsl.exe`). Vazio = padrão do
+    /// sistema (`$SHELL` / PowerShell).
+    #[serde(default)]
+    pub shell: String,
 }
 
 impl Default for Settings {
@@ -24,6 +28,7 @@ impl Default for Settings {
             yolo: false,
             font_size: 13,
             webgl: false,
+            shell: String::new(),
         }
     }
 }
@@ -71,6 +76,7 @@ mod tests {
             yolo: true,
             font_size: 15,
             webgl: true,
+            shell: "/bin/bash".into(),
         };
         store.save(&s).unwrap();
         assert_eq!(store.load().unwrap(), s);

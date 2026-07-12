@@ -8,6 +8,7 @@ import type {
   Manifest,
   SessionRecord,
   Settings,
+  ShellOption,
   UsageStats,
   Worktree,
 } from "./types";
@@ -18,6 +19,7 @@ export const api = {
   settingsLoad: () => invoke<Settings>("settings_load"),
   settingsSave: (settings: Settings) => invoke<void>("settings_save", { settings }),
   homeDir: () => invoke<string>("home_dir"),
+  listShells: () => invoke<ShellOption[]>("list_shells"),
   savePasteImage: (dataB64: string) => invoke<string>("save_paste_image", { dataB64 }),
   sessionHistoryLoad: () => invoke<SessionRecord[]>("session_history_load"),
   sessionTranscript: (record: SessionRecord) =>

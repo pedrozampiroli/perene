@@ -1,6 +1,18 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { X } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
+  import { api } from "../lib/api";
+  import type { ShellOption } from "../lib/types";
+
+  let shells = $state<ShellOption[]>([]);
+  onMount(async () => {
+    try {
+      shells = await api.listShells();
+    } catch {
+      shells = [];
+    }
+  });
 
   const shortcuts: [string, string][] = [
     ["⌘T", "Novo terminal (shell)"],
@@ -48,6 +60,19 @@
         <span>{app.settings.fontSize}</span>
         <button onclick={() => app.setFontSize(app.settings.fontSize + 1)}>+</button>
       </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <div class="t">Shell</div>
+        <div class="sub">Programa do terminal (aplica a novos panes). No Windows: WSL, Git Bash…</div>
+      </div>
+      <select value={app.settings.shell} onchange={(e) => app.setShell(e.currentTarget.value)}>
+        <option value="">Padrão do sistema</option>
+        {#each shells as s (s.path)}
+          <option value={s.path}>{s.label} — {s.path}</option>
+        {/each}
+      </select>
     </div>
 
     <div class="shortcuts">
@@ -122,6 +147,16 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  select {
+    max-width: 260px;
+    background: #1e1e1e;
+    border: 1px solid #3a3a3a;
+    color: #fff;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    outline: none;
   }
   .stepper button {
     background: #3a3d41;

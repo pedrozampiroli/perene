@@ -216,6 +216,10 @@ pub fn git_pull(root: String) -> Result<String, String> {
 /// `git push`. Se o branch não tem upstream, seta e empurra (`-u origin <branch>`).
 #[tauri::command]
 pub fn git_push(root: String) -> Result<String, String> {
+    // Sem nenhum remote → mensagem clara em vez do "fatal" cru do git.
+    if git(&root, &["remote"]).unwrap_or_default().trim().is_empty() {
+        return Err("Este repositório não tem um remote configurado. Adicione com: git remote add origin <url>".into());
+    }
     match git(&root, &["push"]) {
         Ok(o) => Ok(o),
         Err(e) => {

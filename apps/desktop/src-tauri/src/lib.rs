@@ -6,6 +6,7 @@
 
 mod client;
 mod files;
+mod shells;
 mod state;
 
 use client::DaemonClient;
@@ -29,6 +30,7 @@ pub fn run() {
             state::settings_save,
             state::home_dir,
             state::save_paste_image,
+            shells::list_shells,
             state::session_history_load,
             state::session_transcript,
             state::usage_load,

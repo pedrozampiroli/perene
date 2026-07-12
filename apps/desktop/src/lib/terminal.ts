@@ -84,6 +84,7 @@ export interface PaneOptions {
   command?: string | null;
   fontSize?: number;
   webgl?: boolean;
+  shell?: string | null;
 }
 
 export class PerenePane {
@@ -152,6 +153,7 @@ export class PerenePane {
         rows: this.term.rows,
         cwd: opts.cwd ?? null,
         command: opts.command ?? null,
+        shell: opts.shell ?? null,
       },
     });
 

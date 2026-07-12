@@ -28,6 +28,7 @@
         command: app.commandFor(p),
         fontSize: app.settings.fontSize,
         webgl: app.settings.webgl,
+        shell: app.settings.shell || null,
       })
       .catch(() => {}); // erros de spawn não devem virar unhandledrejection
   });
