@@ -49,7 +49,7 @@
       >
         <span class="name">{w.name}</span>
         {#if app.manifest.workspaces.length > 1}
-          <button class="mini" title="Remover workspace" onclick={(e) => { e.stopPropagation(); app.deleteWorkspace(w.id); }}><X size={13} /></button>
+          <button class="mini" title="Remover workspace" onclick={(e) => { e.stopPropagation(); app.confirmDeleteWorkspace(w.id); }}><X size={13} /></button>
         {/if}
       </div>
     {/each}
@@ -83,7 +83,7 @@
             {#if folder.collapsed}<Folder size={14} class="ficon" />{:else}<FolderOpen size={14} class="ficon" />{/if}
             <span class="fname">{folder.name}</span>
             <button class="mini" title="Definir diretório da pasta" onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
-            <button class="mini" title="Remover pasta" onclick={(e) => { e.stopPropagation(); app.deleteFolder(folder.id); }}><X size={12} /></button>
+            <button class="mini" title="Remover pasta" onclick={(e) => { e.stopPropagation(); app.confirmDeleteFolder(folder.id); }}><X size={12} /></button>
           </div>
           {#if !folder.collapsed}
             {#each app.tabsInFolder(ws, folder.id) as tab (tab.id)}
@@ -117,7 +117,7 @@
   >
     <span class="ticon" style="color:{prof.color}"><Icon size={14} /></span>
     <span class="ttitle">{tab.title}</span>
-    <button class="mini" title="Fechar aba" onclick={(e) => { e.stopPropagation(); app.closeTab(tab.id); }}><X size={12} /></button>
+    <button class="mini" title="Fechar aba" onclick={(e) => { e.stopPropagation(); app.confirmCloseTab(tab.id); }}><X size={12} /></button>
   </div>
 {/snippet}
 

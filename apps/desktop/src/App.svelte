@@ -9,6 +9,7 @@
   import HistoryModal from "./components/HistoryModal.svelte";
   import UsageModal from "./components/UsageModal.svelte";
   import NameModal from "./components/NameModal.svelte";
+  import ConfirmModal from "./components/ConfirmModal.svelte";
 
   const isMac = navigator.userAgent.toLowerCase().includes("mac");
 
@@ -91,6 +92,7 @@
     <UsageModal />
   {/if}
   <NameModal />
+  <ConfirmModal />
 {:else}
   <div class="splash">Perene…</div>
 {/if}

@@ -105,6 +105,14 @@ export interface NameModal {
   showDirectory: boolean;
 }
 
+export interface ConfirmState {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger: boolean;
+  onConfirm: () => void;
+}
+
 class AppStore {
   manifest = $state<Manifest>({ version: 3, activeWorkspaceId: null, workspaces: [] });
   settings = $state<Settings>({ yolo: false, fontSize: 13, webgl: false, shell: "" });
@@ -114,6 +122,7 @@ class AppStore {
   historyOpen = $state(false);
   usageOpen = $state(false);
   nameModal = $state<NameModal | null>(null);
+  confirm = $state<ConfirmState | null>(null);
   home = "";
 
   /** Panes criados NESTA sessão (spawn fresco). Os demais, ao serem restaurados
@@ -267,6 +276,61 @@ class AppStore {
       }
     }
     this.nameModal = null;
+  }
+
+  // ── Confirmação antes de excluir/fechar ────────────────────────────────────
+  askConfirm(opts: {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    danger?: boolean;
+    onConfirm: () => void;
+  }): void {
+    this.confirm = {
+      title: opts.title,
+      message: opts.message,
+      confirmLabel: opts.confirmLabel ?? "Excluir",
+      danger: opts.danger ?? true,
+      onConfirm: opts.onConfirm,
+    };
+  }
+  runConfirm(): void {
+    const c = this.confirm;
+    this.confirm = null;
+    c?.onConfirm();
+  }
+  confirmDeleteWorkspace(id: string): void {
+    const ws = this.manifest.workspaces.find((w) => w.id === id);
+    this.askConfirm({
+      title: "Excluir workspace",
+      message: `Excluir "${ws?.name ?? ""}"? Todas as abas e sessões dele serão encerradas.`,
+      onConfirm: () => this.deleteWorkspace(id),
+    });
+  }
+  confirmDeleteFolder(id: string): void {
+    const f = this.activeWorkspace?.folders.find((f) => f.id === id);
+    this.askConfirm({
+      title: "Excluir pasta",
+      message: `Excluir a pasta "${f?.name ?? ""}"? As abas dentro dela voltam para a raiz (não são apagadas).`,
+      onConfirm: () => this.deleteFolder(id),
+    });
+  }
+  confirmCloseTab(id: string): void {
+    const tab = this.activeWorkspace?.tabs.find((t) => t.id === id);
+    this.askConfirm({
+      title: "Fechar aba",
+      message: `Fechar "${tab?.title ?? ""}"? A sessão será encerrada.`,
+      confirmLabel: "Fechar",
+      onConfirm: () => this.closeTab(id),
+    });
+  }
+  confirmClosePane(id: string): void {
+    this.askConfirm({
+      title: "Fechar painel",
+      message: "Fechar este painel? A sessão será encerrada.",
+      confirmLabel: "Fechar",
+      onConfirm: () => this.closePane(id),
+    });
   }
 
   async changeWorkspaceDirectory(id: string): Promise<void> {

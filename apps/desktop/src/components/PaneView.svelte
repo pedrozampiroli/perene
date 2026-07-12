@@ -49,7 +49,7 @@
     <span class="hicon" style="color:{isFiles ? '#6ea8fe' : prof.color}"><HeadIcon size={13} /></span>
     <span class="label">{isFiles ? "Arquivos" : prof.label}</span>
     <span class="dir">{dirLabel}</span>
-    <button class="x" title="Fechar painel (⌘W)" onclick={() => app.closePane(paneId)}><X size={13} /></button>
+    <button class="x" title="Fechar painel (⌘W)" onclick={() => app.confirmClosePane(paneId)}><X size={13} /></button>
   </div>
   {#if isFiles}
     <div class="term"><FilesPane {paneId} /></div>
