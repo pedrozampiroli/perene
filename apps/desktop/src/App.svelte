@@ -3,6 +3,7 @@
   import { app } from "./lib/store.svelte";
   import Sidebar from "./components/Sidebar.svelte";
   import TabGrid from "./components/TabGrid.svelte";
+  import TopBar from "./components/TopBar.svelte";
   import BottomBar from "./components/BottomBar.svelte";
   import SettingsModal from "./components/SettingsModal.svelte";
   import HistoryModal from "./components/HistoryModal.svelte";
@@ -76,6 +77,7 @@
 {#if app.loaded}
   <div class="app">
     <div class="sidebar-col"><Sidebar /></div>
+    <div class="topbar-col"><TopBar /></div>
     <div class="main"><TabGrid /></div>
     <div class="bottom"><BottomBar /></div>
   </div>
@@ -97,26 +99,31 @@
   .app {
     display: grid;
     grid-template-columns: 240px 1fr;
-    grid-template-rows: 1fr 34px;
+    grid-template-rows: 32px 1fr 34px;
     height: 100vh;
     width: 100vw;
     overflow: hidden;
   }
   .sidebar-col {
-    grid-row: 1;
+    grid-row: 1 / 3;
     grid-column: 1;
     border-right: 1px solid #2a2a2a;
     min-height: 0;
   }
-  .main {
+  .topbar-col {
     grid-row: 1;
+    grid-column: 2;
+    min-width: 0;
+  }
+  .main {
+    grid-row: 2;
     grid-column: 2;
     min-width: 0;
     min-height: 0;
     background: #1e1e1e;
   }
   .bottom {
-    grid-row: 2;
+    grid-row: 3;
     grid-column: 1 / 3;
   }
   .splash {
