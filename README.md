@@ -56,5 +56,3 @@ Ver [`docs/atalhos.md`](docs/atalhos.md) ou o diálogo de Configurações (⌘,)
 ## Licença
 
 MIT.
-
-# É nois
