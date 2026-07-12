@@ -221,7 +221,8 @@
   function flash(t: string) {
     msg = t;
     clearTimeout(flashTimer);
-    flashTimer = setTimeout(() => (msg = ""), 2500);
+    // Erros (mais longos) ficam mais tempo; tudo é dispensável no clique.
+    flashTimer = setTimeout(() => (msg = ""), t.length > 40 ? 8000 : 3000);
   }
 </script>
 
@@ -230,8 +231,8 @@
   <div class="gitbar">
     {#if gs?.isRepo}
       <div class="branch-wrap">
-        <button class="branch" onclick={toggleBranchMenu} title="Trocar/criar branch">
-          <GitBranch size={14} /> {gs.branch}{#if dirtyDoc || gs.dirty}<span class="dot"></span>{/if}
+        <button class="branch" onclick={toggleBranchMenu} title={"Branch: " + gs.branch}>
+          <GitBranch size={14} /><span class="bname">{gs.branch}</span>{#if dirtyDoc || gs.dirty}<span class="dot"></span>{/if}
         </button>
         {#if gs.ahead > 0}<span class="ab">↑{gs.ahead}</span>{/if}
         {#if gs.behind > 0}<span class="ab">↓{gs.behind}</span>{/if}
@@ -254,7 +255,6 @@
     {:else}
       <span class="norepo">Sem repositório git em {root}</span>
     {/if}
-    {#if msg}<span class="msg">{msg}</span>{/if}
   </div>
 
   <div class="tabs">
@@ -349,10 +349,15 @@
       {/if}
     </div>
   </div>
+
+  {#if msg}
+    <button class="toast" onclick={() => (msg = "")} title="Dispensar">{msg}</button>
+  {/if}
 </div>
 
 <style>
   .files {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -365,13 +370,18 @@
     align-items: center;
     gap: 8px;
     height: 30px;
+    flex: 0 0 30px;
     padding: 0 10px;
     background: #252526;
     border-bottom: 1px solid #2a2a2a;
     font-size: 12px;
+    flex-wrap: nowrap;
+    overflow: hidden;
   }
   .branch-wrap {
     position: relative;
+    min-width: 0;
+    max-width: 200px;
   }
   .branch {
     background: none;
@@ -382,6 +392,38 @@
     display: flex;
     align-items: center;
     gap: 5px;
+    max-width: 200px;
+    overflow: hidden;
+  }
+  .branch :global(svg),
+  .branch .dot {
+    flex: 0 0 auto;
+  }
+  .bname {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .toast {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
+    z-index: 30;
+    text-align: left;
+    background: #2d2d30;
+    border: 1px solid #3a3a3a;
+    border-left: 3px solid #007acc;
+    color: #d4d4d4;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    max-height: 30%;
+    overflow-y: auto;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+    word-break: break-word;
   }
   .dot {
     width: 7px;
@@ -456,10 +498,9 @@
   }
   .norepo {
     color: #7a7a7a;
-  }
-  .msg {
-    color: #4ec9b0;
-    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .tabs {
     display: flex;
