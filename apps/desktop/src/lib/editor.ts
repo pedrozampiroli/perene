@@ -3,6 +3,7 @@
 
 import { EditorView, keymap } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
+import { MergeView } from "@codemirror/merge";
 import { basicSetup } from "codemirror";
 import { indentWithTab } from "@codemirror/commands";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -46,6 +47,31 @@ function langFor(filename: string): Extension[] {
     default:
       return [];
   }
+}
+
+/** Diff lado a lado (split) read-only: `old` (HEAD) à esquerda, `new` à direita. */
+export function createMergeView(
+  parent: HTMLElement,
+  oldDoc: string,
+  newDoc: string,
+  filename: string,
+): MergeView {
+  const common: Extension[] = [
+    basicSetup,
+    oneDark,
+    ...langFor(filename),
+    EditorState.readOnly.of(true),
+    EditorView.editable.of(false),
+    EditorView.theme({ "&": { height: "100%" }, ".cm-scroller": { overflow: "auto" } }),
+  ];
+  return new MergeView({
+    a: { doc: oldDoc, extensions: common },
+    b: { doc: newDoc, extensions: common },
+    parent,
+    gutter: true,
+    highlightChanges: true,
+    collapseUnchanged: { margin: 3, minSize: 4 },
+  });
 }
 
 export function createEditor(

@@ -11,9 +11,10 @@
     X,
   } from "@lucide/svelte";
   import type { EditorView } from "@codemirror/view";
+  import type { MergeView } from "@codemirror/merge";
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
-  import { createEditor } from "../lib/editor";
+  import { createEditor, createMergeView } from "../lib/editor";
   import type { Commit, DirEntry, GitStatus, Worktree } from "../lib/types";
   import FileTree from "./FileTree.svelte";
 
@@ -26,10 +27,15 @@
   let rootEntries = $state<DirEntry[]>([]);
   let tab = $state<FTab>("files");
   let mode = $state<"edit" | "diff">("edit");
+  let diffMode = $state<"split" | "unified">("split");
   let selected = $state<string | null>(null);
   let currentContent = $state("");
   let diffText = $state("");
+  let diffOld = $state("");
+  let diffNew = $state("");
   let dirtyDoc = $state(false);
+  let mergeHost = $state<HTMLElement>();
+  let mergeView: MergeView | undefined;
   let branchMenu = $state(false);
   let newBranch = $state("");
   let msg = $state("");
@@ -51,6 +57,7 @@
     if (!gs?.root) return;
     selected = c.short;
     mode = "diff";
+    diffMode = "unified"; // um commit toca vários arquivos → diff unificado
     diffText = "carregando…";
     diffText = await api.gitShow(gs.root, c.hash).catch((e) => "erro: " + e);
   }
@@ -108,7 +115,10 @@
   onMount(async () => {
     await Promise.all([loadStatus(), loadRoot()]);
   });
-  onDestroy(() => editorView?.destroy());
+  onDestroy(() => {
+    editorView?.destroy();
+    mergeView?.destroy();
+  });
 
   async function loadStatus() {
     try {
@@ -151,6 +161,21 @@
     };
   });
 
+  // (Re)cria o diff lado a lado quando as versões/host mudam.
+  $effect(() => {
+    if (mode !== "diff" || diffMode !== "split" || !mergeHost) return;
+    const host = mergeHost;
+    const o = diffOld;
+    const n = diffNew;
+    const f = selected ?? "";
+    mergeView?.destroy();
+    mergeView = createMergeView(host, o, n, f);
+    return () => {
+      mergeView?.destroy();
+      mergeView = undefined;
+    };
+  });
+
   async function saveFile(content: string) {
     if (!selected) return;
     try {
@@ -170,11 +195,16 @@
   async function openDiff(relPath: string) {
     selected = gs?.root ? `${gs.root}/${relPath}` : relPath;
     mode = "diff";
-    diffText = "";
+    diffMode = "split";
+    diffOld = "";
+    diffNew = "";
     if (!gs?.root) return;
     try {
-      diffText = (await api.gitDiff(gs.root, relPath)) || "(sem diferenças)";
+      const v = await api.gitFileVersions(gs.root, relPath);
+      diffOld = v.old;
+      diffNew = v.new;
     } catch (e) {
+      diffMode = "unified";
       diffText = "erro: " + e;
     }
   }
@@ -334,18 +364,27 @@
         <div class="editor-head">{rel(selected)}{#if dirtyDoc} •{/if}</div>
         <div class="editor" bind:this={editorHost}></div>
       {:else}
-        <div class="editor-head">{rel(selected)} — diff</div>
-        <div class="diff">
-          {#each diffLines as line, i (i)}
-            <div
-              class="dl"
-              class:add={line.startsWith("+") && !line.startsWith("+++")}
-              class:del={line.startsWith("-") && !line.startsWith("---")}
-              class:hunk={line.startsWith("@@")}
-              class:meta={line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("+++") || line.startsWith("---")}
-            >{line || " "}</div>
-          {/each}
+        <div class="editor-head">
+          {rel(selected)} — diff
+          <span class="diff-legend">
+            {#if diffMode === "split"}<span class="lg old">antes (HEAD)</span><span class="lg new">agora</span>{/if}
+          </span>
         </div>
+        {#if diffMode === "split"}
+          <div class="merge" bind:this={mergeHost}></div>
+        {:else}
+          <div class="diff">
+            {#each diffLines as line, i (i)}
+              <div
+                class="dl"
+                class:add={line.startsWith("+") && !line.startsWith("+++")}
+                class:del={line.startsWith("-") && !line.startsWith("---")}
+                class:hunk={line.startsWith("@@")}
+                class:meta={line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("+++") || line.startsWith("---")}
+              >{line || " "}</div>
+            {/each}
+          </div>
+        {/if}
       {/if}
     </div>
   </div>
@@ -376,7 +415,7 @@
     border-bottom: 1px solid #2a2a2a;
     font-size: 12px;
     flex-wrap: nowrap;
-    overflow: hidden;
+    /* sem overflow:hidden (cortava o menu de branch); o branch já trunca via .bname */
   }
   .branch-wrap {
     position: relative;
@@ -700,6 +739,40 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
+  }
+  .merge {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .merge :global(.cm-mergeView),
+  .merge :global(.cm-mergeViewEditors) {
+    height: 100%;
+  }
+  .merge :global(.cm-editor) {
+    height: 100%;
+  }
+  .diff-legend {
+    float: right;
+    display: inline-flex;
+    gap: 10px;
+  }
+  .lg {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .lg::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+  }
+  .lg.old::before {
+    background: rgba(248, 81, 73, 0.5);
+  }
+  .lg.new::before {
+    background: rgba(63, 185, 80, 0.5);
   }
   .diff {
     flex: 1 1 auto;

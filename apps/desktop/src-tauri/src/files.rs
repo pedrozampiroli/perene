@@ -156,6 +156,23 @@ fn extract_after(s: &str, marker: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
+/// As duas versões de um arquivo para o diff lado a lado: `old` = versão do HEAD,
+/// `new` = versão atual (working tree). Vazio quando o arquivo não existe daquele
+/// lado (novo ou removido).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileVersions {
+    pub old: String,
+    pub new: String,
+}
+
+#[tauri::command]
+pub fn git_file_versions(root: String, file: String) -> FileVersions {
+    let old = git(&root, &["show", &format!("HEAD:{file}")]).unwrap_or_default();
+    let new = std::fs::read_to_string(PathBuf::from(&root).join(&file)).unwrap_or_default();
+    FileVersions { old, new }
+}
+
 /// Diff de um arquivo (inclui staged + unstaged vs HEAD). `file` relativo à raiz.
 #[tauri::command]
 pub fn git_diff(root: String, file: String) -> Result<String, String> {

@@ -32,13 +32,14 @@
     padding: 0 10px;
     background: #1e1e1e;
     border-bottom: 1px solid #2a2a2a;
-    overflow: hidden;
+    /* sem overflow:hidden — senão corta o menu git que abre pra baixo */
   }
   .crumb {
     display: flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
+    overflow: hidden;
     font-size: 12px;
     color: #b8b8b8;
   }

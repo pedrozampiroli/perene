@@ -37,6 +37,7 @@ pub fn run() {
             files::fs_write_file,
             files::git_status,
             files::git_diff,
+            files::git_file_versions,
             files::git_branches,
             files::git_checkout,
             files::git_create_branch,

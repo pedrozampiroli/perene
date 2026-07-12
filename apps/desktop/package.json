@@ -20,6 +20,7 @@
     "@codemirror/lang-python": "^6",
     "@codemirror/lang-rust": "^6",
     "@codemirror/language": "^6",
+    "@codemirror/merge": "^6.12.2",
     "@codemirror/search": "^6",
     "@codemirror/state": "^6",
     "@codemirror/theme-one-dark": "^6",

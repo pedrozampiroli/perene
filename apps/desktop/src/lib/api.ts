@@ -31,6 +31,8 @@ export const api = {
     invoke<void>("fs_write_file", { path, content }),
   gitStatus: (path: string) => invoke<GitStatus>("git_status", { path }),
   gitDiff: (root: string, file: string) => invoke<string>("git_diff", { root, file }),
+  gitFileVersions: (root: string, file: string) =>
+    invoke<{ old: string; new: string }>("git_file_versions", { root, file }),
   gitBranches: (root: string) => invoke<string[]>("git_branches", { root }),
   gitCheckout: (root: string, branch: string) =>
     invoke<void>("git_checkout", { root, branch }),
