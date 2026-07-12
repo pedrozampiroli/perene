@@ -196,6 +196,24 @@ pub fn git_pull(root: String) -> Result<String, String> {
     git(&root, &["pull", "--ff-only"])
 }
 
+/// `git push`. Se o branch não tem upstream, seta e empurra (`-u origin <branch>`).
+#[tauri::command]
+pub fn git_push(root: String) -> Result<String, String> {
+    match git(&root, &["push"]) {
+        Ok(o) => Ok(o),
+        Err(e) => {
+            if e.contains("upstream") || e.contains("--set-upstream") {
+                let branch = git(&root, &["rev-parse", "--abbrev-ref", "HEAD"])?
+                    .trim()
+                    .to_string();
+                git(&root, &["push", "-u", "origin", &branch])
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
 /// Abre o PR do branch atual no browser via `gh`. Cria (rascunho web) se não
 /// existir; se já existir, apenas abre.
 #[tauri::command]

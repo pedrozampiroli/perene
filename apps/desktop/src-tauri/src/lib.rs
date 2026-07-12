@@ -42,6 +42,7 @@ pub fn run() {
             files::git_create_branch,
             files::git_fetch,
             files::git_pull,
+            files::git_push,
             files::git_open_pr,
             files::git_log,
             files::git_show,

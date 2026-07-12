@@ -4,10 +4,10 @@
     GitBranch,
     RefreshCw,
     ArrowDownToLine,
+    ArrowUpToLine,
     GitPullRequestArrow,
     GitCommitHorizontal,
     FolderGit2,
-    Check,
     X,
   } from "@lucide/svelte";
   import type { EditorView } from "@codemirror/view";
@@ -64,6 +64,18 @@
       flash("commit feito");
       await loadStatus();
       commits = await api.gitLog(gs.root, 60).catch(() => []);
+    } catch (e) {
+      flash(String(e));
+    }
+  }
+
+  async function doPush() {
+    if (!gs?.root) return;
+    flash("push…");
+    try {
+      await api.gitPush(gs.root);
+      flash("push ok");
+      await loadStatus();
     } catch (e) {
       flash(String(e));
     }
@@ -266,9 +278,14 @@
         {#if gs?.isRepo}
           <div class="commitbox">
             <input placeholder="mensagem do commit…" bind:value={commitMsg} onkeydown={(e) => e.key === "Enter" && doCommit()} />
-            <button title="git add -A && git commit" disabled={!commitMsg.trim() || !gs.files.length} onclick={doCommit}>
-              <GitCommitHorizontal size={14} /> Commit ({gs.files.length})
-            </button>
+            <div class="cbtns">
+              <button class="commit-btn" title="git add -A && git commit" disabled={!commitMsg.trim() || !gs.files.length} onclick={doCommit}>
+                <GitCommitHorizontal size={14} /> Commit{#if gs.files.length} ({gs.files.length}){/if}
+              </button>
+              <button class="push-btn" title="git push" onclick={doPush}>
+                <ArrowUpToLine size={14} /> Push{#if gs.ahead} (↑{gs.ahead}){/if}
+              </button>
+            </div>
           </div>
         {/if}
         {#if gs && gs.files.length}
@@ -522,6 +539,13 @@
     outline: none;
     font-size: 12px;
   }
+  .cbtns {
+    display: flex;
+    gap: 6px;
+  }
+  .cbtns button {
+    flex: 1 1 0;
+  }
   .commitbox button,
   .wtform button {
     display: inline-flex;
@@ -535,6 +559,12 @@
     padding: 6px;
     cursor: pointer;
     font-size: 12px;
+  }
+  .commitbox .push-btn {
+    background: #2ea043;
+  }
+  .commitbox .push-btn:hover {
+    background: #3fb950;
   }
   .commitbox button:disabled,
   .wtform button:disabled {

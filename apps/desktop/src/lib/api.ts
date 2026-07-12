@@ -38,6 +38,7 @@ export const api = {
     invoke<void>("git_create_branch", { root, branch }),
   gitFetch: (root: string) => invoke<void>("git_fetch", { root }),
   gitPull: (root: string) => invoke<string>("git_pull", { root }),
+  gitPush: (root: string) => invoke<string>("git_push", { root }),
   gitOpenPr: (root: string) => invoke<void>("git_open_pr", { root }),
   gitLog: (root: string, limit = 50) => invoke<Commit[]>("git_log", { root, limit }),
   gitShow: (root: string, hash: string) => invoke<string>("git_show", { root, hash }),
