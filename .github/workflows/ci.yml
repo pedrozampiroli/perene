@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Compilar + testar nas 3 plataformas (mínimo do M6).
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar deps do sistema (Linux/WebKitGTK)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf libssl-dev build-essential
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar deps do front
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Typecheck do front
+        working-directory: apps/desktop
+        run: npm run check
+
+      - name: Build do front
+        working-directory: apps/desktop
+        run: npm run build
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: cargo build
+        run: cargo build --workspace
+
+  # Gerar instaladores (.dmg / .msi+NSIS / .deb+AppImage). Ideal do M6:
+  # roda em tags v* ou manualmente e sobe os artefatos.
+  bundle:
+    name: bundle (${{ matrix.os }})
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar deps do sistema (Linux/WebKitGTK)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf libssl-dev build-essential
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar deps do front
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Tauri build (instalador)
+        working-directory: apps/desktop
+        run: npm run tauri build
+
+      - name: Subir artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: perene-${{ matrix.os }}
+          if-no-files-found: ignore
+          path: |
+            target/release/bundle/**/*.dmg
+            target/release/bundle/**/*.msi
+            target/release/bundle/**/*.exe
+            target/release/bundle/**/*.deb
+            target/release/bundle/**/*.AppImage

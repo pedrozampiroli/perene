@@ -12,6 +12,10 @@ pub struct Settings {
     pub yolo: bool,
     /// Tamanho da fonte dos terminais.
     pub font_size: u16,
+    /// Renderizador WebGL do xterm: mais rápido, porém MUITO mais RAM (com 5
+    /// terminais o WebContent passa de 270 MB). Desligado por padrão para caber
+    /// no alvo de RAM; o usuário pode ligar se preferir performance.
+    pub webgl: bool,
 }
 
 impl Default for Settings {
@@ -19,6 +23,7 @@ impl Default for Settings {
         Self {
             yolo: false,
             font_size: 13,
+            webgl: false,
         }
     }
 }
@@ -65,6 +70,7 @@ mod tests {
         let s = Settings {
             yolo: true,
             font_size: 15,
+            webgl: true,
         };
         store.save(&s).unwrap();
         assert_eq!(store.load().unwrap(), s);

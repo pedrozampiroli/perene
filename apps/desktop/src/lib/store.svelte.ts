@@ -97,7 +97,7 @@ function leavesOf(node: LayoutNode): string[] {
 
 class AppStore {
   manifest = $state<Manifest>({ version: 3, activeWorkspaceId: null, workspaces: [] });
-  settings = $state<Settings>({ yolo: false, fontSize: 13 });
+  settings = $state<Settings>({ yolo: false, fontSize: 13, webgl: false });
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
   settingsOpen = $state(false);
@@ -160,6 +160,10 @@ class AppStore {
 
   toggleYolo(): void {
     this.settings.yolo = !this.settings.yolo;
+    this.saveSettings();
+  }
+  toggleWebgl(): void {
+    this.settings.webgl = !this.settings.webgl;
     this.saveSettings();
   }
   setFontSize(size: number): void {

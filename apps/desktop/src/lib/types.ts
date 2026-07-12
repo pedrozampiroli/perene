@@ -64,6 +64,7 @@ export interface Manifest {
 export interface Settings {
   yolo: boolean;
   fontSize: number;
+  webgl: boolean;
 }
 
 export interface SessionRecord {

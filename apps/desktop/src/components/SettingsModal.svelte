@@ -29,6 +29,14 @@
       <input type="checkbox" checked={app.settings.yolo} onchange={() => app.toggleYolo()} />
     </label>
 
+    <label class="row">
+      <div>
+        <div class="t">Renderizador WebGL</div>
+        <div class="sub">Mais rápido, porém MUITO mais RAM. Desligado por padrão.</div>
+      </div>
+      <input type="checkbox" checked={app.settings.webgl} onchange={() => app.toggleWebgl()} />
+    </label>
+
     <div class="row">
       <div>
         <div class="t">Tamanho da fonte</div>

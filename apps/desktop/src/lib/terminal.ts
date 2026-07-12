@@ -83,6 +83,7 @@ export interface PaneOptions {
   cwd?: string | null;
   command?: string | null;
   fontSize?: number;
+  webgl?: boolean;
 }
 
 export class PerenePane {
@@ -116,7 +117,10 @@ export class PerenePane {
     this.term.loadAddon(new ClipboardAddon());
 
     this.term.open(container);
-    this.tryEnableWebgl();
+    // WebGL só quando o usuário liga nas configurações: com 5 terminais o
+    // WebContent passava de 270 MB (estoura o alvo de RAM). Padrão = renderer
+    // leve do xterm.
+    if (opts.webgl) this.tryEnableWebgl();
 
     this.term.onResize(({ cols, rows }) => {
       void invoke("terminal_resize", { paneId: this.paneId, cols, rows });

@@ -2342,6 +2342,7 @@ dependencies = [
  "libc",
  "parking_lot",
  "perene-core",
+ "perene-daemon",
  "perene-protocol",
  "serde",
  "serde_json",

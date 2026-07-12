@@ -143,10 +143,9 @@ fn connect_or_spawn_daemon() -> Result<std::os::unix::net::UnixStream, String> {
 #[cfg(unix)]
 fn spawn_daemon() -> Result<(), String> {
     use std::os::unix::process::CommandExt;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
-    let bin = daemon_bin_path()?;
-    let mut cmd = Command::new(&bin);
+    let mut cmd = daemon_command()?;
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -157,32 +156,20 @@ fn spawn_daemon() -> Result<(), String> {
             Ok(())
         });
     }
-    cmd.spawn()
-        .map_err(|e| format!("falha ao subir o daemon {}: {e}", bin.display()))?;
+    cmd.spawn().map_err(|e| format!("falha ao subir o daemon: {e}"))?;
     Ok(())
 }
 
-fn daemon_bin_path() -> Result<std::path::PathBuf, String> {
+/// Comando que sobe o daemon. Por padrão reexecuta ESTE binário com `--daemon`
+/// (sem sidecar). `PERENE_DAEMON_BIN` permite apontar um binário standalone.
+fn daemon_command() -> Result<std::process::Command, String> {
     if let Ok(p) = std::env::var("PERENE_DAEMON_BIN") {
-        return Ok(std::path::PathBuf::from(p));
+        return Ok(std::process::Command::new(p));
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let dir = exe
-        .parent()
-        .ok_or_else(|| "sem diretório do executável".to_string())?;
-    let name = if cfg!(windows) {
-        "perene-daemon.exe"
-    } else {
-        "perene-daemon"
-    };
-    let candidate = dir.join(name);
-    if candidate.exists() {
-        return Ok(candidate);
-    }
-    Err(format!(
-        "binário do daemon não encontrado em {} (defina PERENE_DAEMON_BIN)",
-        candidate.display()
-    ))
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("--daemon");
+    Ok(cmd)
 }
 
 // ── Comandos Tauri (fronteira UI ⇄ Rust) — mesma assinatura do M0 ────────────

@@ -24,6 +24,9 @@ base64 = { workspace = true }
 
 perene-protocol = { workspace = true }
 perene-core = { workspace = true }
+# O daemon vive no MESMO binário: a UI o sobe reexecutando-se com `--daemon`
+# (sem sidecar, empacotamento trivial).
+perene-daemon = { path = "../../../crates/perene-daemon" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

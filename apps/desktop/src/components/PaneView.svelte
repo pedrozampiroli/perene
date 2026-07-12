@@ -25,6 +25,7 @@
         cwd: p.workingDirectory,
         command: app.commandFor(p),
         fontSize: app.settings.fontSize,
+        webgl: app.settings.webgl,
       })
       .catch(() => {}); // erros de spawn não devem virar unhandledrejection
   });

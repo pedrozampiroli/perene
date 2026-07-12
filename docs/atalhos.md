@@ -14,6 +14,11 @@
 | ⌘⇧D | Ctrl+Alt+D | Dividir o painel abaixo |
 | ⌘1 … ⌘9 | Ctrl+1 … Ctrl+9 | Ir para a aba N do workspace |
 | ⌘, | Ctrl+, | Abrir/fechar Configurações |
+| ⌘Y | Ctrl+Shift+Y | Histórico de sessões (Claude/Codex/OpenCode) |
+| ⌘U | Ctrl+Shift+U | Painel de uso de tokens |
+
+Na barra inferior também há atalhos por clique: 📁 visualizador de arquivos,
+🕐 histórico, 📊 uso, ⚙ configurações.
 
 ## Terminal
 
