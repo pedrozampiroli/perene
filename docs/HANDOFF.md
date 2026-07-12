@@ -1,0 +1,122 @@
+# Handoff — Perene v2 (estado ao fim da sessão de 2026-07-11)
+
+> Documento pra retomar o projeto numa nova sessão. Leia junto com
+> [`../PLAN.md`](../PLAN.md), [`../CLAUDE.md`](../CLAUDE.md) e o `git log`.
+
+## Estado atual
+
+**Todos os milestones M0–M6 do PLAN.md foram executados e commitados.**
+
+- Branch: **`feat/perene-v2-milestones`** (6 commits) sobre o `main` (que tem o
+  commit-base do M0). **Não mergeado** — decisão do usuário pendente.
+- Working tree limpo. `cargo test --workspace` verde; `npm run check` 0 erros.
+- Sem git remote configurado (por isso "CI verde" ainda não foi comprovado).
+
+```
+6510894 M6: packaging + CI + RAM sob o alvo
+8d96849 M5: git + visualizador de arquivos (mini-VSCode)
+f032877 M4: resume pós-reboot + histórico + usage
+509015d M3: UI completa (sidebar, splits, perfis, YOLO, paste de imagem)
+3e569c1 M2: manifest v3 + persistência atômica no perene-core
+aaa1d79 M1: daemon de sessões (PTYs sobrevivem à UI) + reattach com scrollback
+68227a7 M0: esqueleto Tauri 2 + Svelte 5 + xterm.js com terminal local   (no main)
+```
+
+## Como rodar / testar
+
+```bash
+cd apps/desktop
+npm install            # (já instalado)
+npm run tauri dev      # roda o app em dev
+npm run tauri build    # gera o instalador — sai em target/release/bundle/
+npm run check          # typecheck do front (svelte-check)
+
+# na raiz do repo:
+cargo test --workspace # testes Rust
+```
+
+Instalador mac já gerado e testado: `target/release/bundle/dmg/Perene_0.1.0_aarch64.dmg`.
+
+## Verificado ✅ vs pendente de validação manual ⏳
+
+**Verificado (automatizado/runtime por mim):**
+- Daemon sobrevive ao kill da UI; relaunch adota o mesmo daemon; reattach com
+  replay de scrollback (teste automatizado `crates/perene-daemon/tests/protocol.rs`).
+- Persistência: round-trip, rotação de backup, recuperação de corrupção, sem
+  tocar `~/.perene2` (testes injetam tempdir).
+- Resume: pane restaurado do manifest spawna `codex resume --last` /
+  `claude --resume <uuid>` (+YOLO) — confirmado via `ps`.
+- Histórico lê 1590 sessões reais; usage cold 2.4s / warm 16ms.
+- Git: `git_status`/`git_diff`/fs testados no repo real.
+- Instalador `.dmg` sobe e roda com 5 terminais a **109 MB** (< 150 MB alvo).
+
+**Pendente (precisa de mão humana no GUI — não dá pra automatizar):**
+- ⏳ **Gate do M0** (é o gate do projeto): acentos via dead keys (⌥e→é),
+  Shift+Enter no Claude Code, scroll trackpad, ⌘C/⌘V, `vim`. **Task #1 segue
+  aberta por causa disso.**
+- ⏳ Fluxos M3/M5: splits, drag&drop, renomear, abrir/editar/⌘S/diff no viewer.
+- ⏳ "CI verde": configurar remote no GitHub + push pra rodar o workflow.
+
+## Mapa da arquitetura
+
+```
+crates/
+  perene-protocol/   tipos IPC (ClientMessage/DaemonMessage, framing) + eventos
+  perene-core/       models(manifest v3) · store(atômico) · settings · paths ·
+                     history · usage · sqlite  — Rust puro, testável
+  perene-daemon/     session(1 PTY/pane + scrollback) · server(unix socket +
+                     flock single-instance) · pty(build_command login shell)
+apps/desktop/
+  src-tauri/src/     lib.rs(registro dos comandos) · main.rs(--daemon reexec) ·
+                     client.rs(cliente do daemon) · state.rs(manifest/settings/
+                     history/usage/paste) · files.rs(fs + git)
+  src/lib/           store.svelte.ts(estado+ações) · terminal.ts(xterm) ·
+                     editor.ts(CodeMirror) · profiles.ts · api.ts · types.ts
+  src/components/    App · Sidebar · BottomBar · TabGrid · SplitContainer ·
+                     PaneView · FilesPane · FileTree · SettingsModal ·
+                     HistoryModal · UsageModal
+```
+
+Estado do app em `~/.perene2/` (manifest.json, settings.json, daemon.sock,
+scrollback/, paste/, usage-cache.json).
+
+## Gotchas / lições desta sessão (não repita os erros)
+
+1. **serde `rename_all` em ENUM só renomeia VARIANTES, não os campos.**
+   `LayoutNode::Leaf { pane_id }` ia como `pane_id` (snake) e o front lia
+   `paneId=undefined` → terminal nunca spawnava. Fix: `#[serde(rename_all)]` em
+   CADA variante. (Bug que travou o M3 por um tempo; tem teste de regressão.)
+2. **RAM: o renderer WebGL do xterm é o vilão.** Com 5 terminais o WebContent
+   ia a 274 MB (~360 MB total). Virou opção nas Configurações, **default OFF**
+   → 109 MB. Se ligar WebGL, conta com o custo.
+3. **App = daemon no MESMO binário** (`perene-desktop --daemon`), sem sidecar.
+   `client.rs::daemon_command()` reexecuta o próprio exe. `PERENE_DAEMON_BIN`
+   permite apontar um binário standalone (usado por testes/dev).
+4. **Medir RAM: rodar o `.app` via `open`**, não o binário cru em background
+   (binário backgrounded morre por SIGHUP quando o shell sai). Use
+   `vmmap --summary <pid>` (phys_footprint), não RSS (superconta páginas
+   compartilhadas). Atribua os helpers WebKit por PID > pid-do-app (ou kill-diff).
+5. **Existem DOIS apps chamados "Perene"**: a v1 (Swift, `~/Projects/tool/
+   zampimanager`, em uso pelo usuário) e esta v2. Cuidado ao dar `pkill`/
+   screenshot — filtre por `target/.../perene-desktop`.
+6. **Testes NUNCA tocam estado real**: `PERENE2_STATE_DIR` (env) redireciona
+   tudo; stores recebem o caminho por injeção. Mantenha isso.
+
+## Limitações conhecidas / próximos passos
+
+- **Windows/Linux**: compilam no CI, mas o IPC do daemon é `#[cfg(unix)]`
+  (unix socket). Windows precisa de named pipes (`server.rs`/`client.rs` têm
+  stub que retorna erro). WebKitGTK (Linux) pode precisar de fallback do
+  renderer. mac é a plataforma completa.
+- **cwd tracking** (atualizar `pane.workingDirectory` via OSC 7) não foi
+  implementado — o cwd fica o do spawn. Debounce de save já está pronto pra isso.
+- **Ícone**: gerado por um gradiente placeholder (`src-tauri/gen-icon.mjs` +
+  `icon-source.png`). Trocar por um ícone real quando quiser.
+- **Fila de próximos passos sugerida**: (1) validar M0/M3/M5 manualmente;
+  (2) push + CI; (3) mergear o branch; (4) named pipes no Windows;
+  (5) cwd tracking; (6) ícone real.
+
+## Referências da v1 (não mexer — `~/Projects/tool/zampimanager`)
+
+`Sources/Perene/Models.swift`, `docs/data-model.md`, `SessionHistory.swift`,
+`UsageProvider.swift`, `GitController.swift`, `SessionHistoryController.swift`.

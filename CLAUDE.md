@@ -3,6 +3,11 @@
 Reescrita multiplataforma do Perene (gerenciador de terminais para CLIs de IA).
 O plano completo está em `PLAN.md`; as regras abaixo são o resumo operacional.
 
+> **Estado atual / retomada:** ver [`docs/HANDOFF.md`](docs/HANDOFF.md). Resumo:
+> M0–M6 do PLAN.md feitos e commitados no branch `feat/perene-v2-milestones`
+> (não mergeado). Pendente: validação manual do gate do M0 (dead keys, vim,
+> copiar/colar) e dos fluxos M3/M5; push pro GitHub pra CI verde.
+
 ## Regras invioláveis (lições da v1)
 
 1. **Testes JAMAIS escrevem no estado real.** Todo código que persiste recebe o
