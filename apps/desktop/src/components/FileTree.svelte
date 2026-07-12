@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ChevronRight, ChevronDown, Folder, FolderOpen, File } from "@lucide/svelte";
   import Self from "./FileTree.svelte";
   import { api } from "../lib/api";
   import type { DirEntry } from "../lib/types";
@@ -55,7 +56,18 @@
   role="button"
   tabindex="0"
 >
-  <span class="caret">{entry.isDir ? (expanded ? "▾" : "▸") : ""}</span>
+  <span class="caret">
+    {#if entry.isDir}
+      {#if expanded}<ChevronDown size={13} />{:else}<ChevronRight size={13} />{/if}
+    {/if}
+  </span>
+  <span class="ficon">
+    {#if entry.isDir}
+      {#if expanded}<FolderOpen size={14} />{:else}<Folder size={14} />{/if}
+    {:else}
+      <File size={14} />
+    {/if}
+  </span>
   <span class="name" style={color(entry.path) ? `color:${color(entry.path)}` : ""}>{entry.name}</span>
 </div>
 {#if expanded}
@@ -82,8 +94,16 @@
     background: #37373d;
   }
   .caret {
-    width: 10px;
+    display: flex;
+    align-items: center;
+    width: 13px;
     color: #8a8a8a;
+    flex: 0 0 auto;
+  }
+  .ficon {
+    display: flex;
+    align-items: center;
+    color: #8a99b8;
     flex: 0 0 auto;
   }
   .name {

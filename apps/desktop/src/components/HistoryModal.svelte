@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { X } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
   import { profile } from "../lib/profiles";
@@ -65,7 +66,7 @@
           <button class:active={harness === h.id} onclick={() => (harness = h.id)}>{h.label}</button>
         {/each}
       </div>
-      <button class="close" onclick={() => (app.historyOpen = false)}>✕</button>
+      <button class="close" onclick={() => (app.historyOpen = false)}><X size={16} /></button>
     </div>
 
     <div class="body">

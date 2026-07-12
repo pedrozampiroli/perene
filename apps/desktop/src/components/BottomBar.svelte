@@ -1,4 +1,15 @@
 <script lang="ts">
+  import {
+    SquareSplitHorizontal,
+    SquareSplitVertical,
+    Columns3,
+    Rows3,
+    LayoutGrid,
+    FolderTree,
+    History,
+    ChartColumn,
+    Settings,
+  } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { PROFILES, profile } from "../lib/profiles";
   import type { SplitDirection } from "../lib/types";
@@ -11,16 +22,12 @@
 </script>
 
 <div class="bottombar">
-  <!-- Novo terminal por perfil (ícone + cor) -->
+  <!-- Novo terminal por perfil -->
   <div class="group profiles">
     {#each PROFILES as p (p.id)}
-      <button
-        class="prof"
-        style="--c:{p.color}"
-        title={"Novo " + p.label}
-        onclick={() => app.createTab(p.id)}
-      >
-        <span class="ic">{p.icon}</span>
+      {@const Icon = p.icon}
+      <button class="prof" style="--c:{p.color}" title={"Novo " + p.label} onclick={() => app.createTab(p.id)}>
+        <Icon size={16} />
       </button>
     {/each}
   </div>
@@ -44,19 +51,22 @@
 
   <div class="spacer"></div>
 
-  <!-- Splits + presets de layout -->
   <div class="group">
-    <button title="Dividir à direita (⌘D)" onclick={() => split("horizontal")}>⇥</button>
-    <button title="Dividir abaixo (⌘⇧D)" onclick={() => split("vertical")}>⤓</button>
-    <button title="Colunas" onclick={() => app.arrange("columns")}>▥</button>
-    <button title="Linhas" onclick={() => app.arrange("rows")}>▤</button>
-    <button title="Grade" onclick={() => app.arrange("grid")}>▦</button>
+    <button title="Dividir à direita (⌘D)" onclick={() => split("horizontal")}><SquareSplitHorizontal size={16} /></button>
+    <button title="Dividir abaixo (⌘⇧D)" onclick={() => split("vertical")}><SquareSplitVertical size={16} /></button>
+    <button title="Colunas" onclick={() => app.arrange("columns")}><Columns3 size={16} /></button>
+    <button title="Linhas" onclick={() => app.arrange("rows")}><Rows3 size={16} /></button>
+    <button title="Grade" onclick={() => app.arrange("grid")}><LayoutGrid size={16} /></button>
   </div>
 
-  <button title="Visualizador de arquivos" onclick={() => app.openFilesTab()}>📁</button>
-  <button title="Histórico de sessões (⌘Y)" onclick={() => (app.historyOpen = true)}>🕐</button>
-  <button title="Uso de tokens (⌘U)" onclick={() => (app.usageOpen = true)}>📊</button>
-  <button class="gear" title="Configurações (⌘,)" onclick={() => (app.settingsOpen = true)}>⚙</button>
+  <div class="sep"></div>
+
+  <div class="group">
+    <button title="Visualizador de arquivos" onclick={() => app.openFilesTab()}><FolderTree size={16} /></button>
+    <button title="Histórico de sessões (⌘Y)" onclick={() => (app.historyOpen = true)}><History size={16} /></button>
+    <button title="Uso de tokens (⌘U)" onclick={() => (app.usageOpen = true)}><ChartColumn size={16} /></button>
+    <button title="Configurações (⌘,)" onclick={() => (app.settingsOpen = true)}><Settings size={16} /></button>
+  </div>
 </div>
 
 <style>
@@ -73,23 +83,32 @@
   .group {
     display: flex;
     align-items: center;
-    gap: 3px;
+    gap: 2px;
+  }
+  .sep {
+    width: 1px;
+    height: 18px;
+    background: #3a3a3a;
+    margin: 0 2px;
   }
   .tabs {
     overflow-x: auto;
-    max-width: 45vw;
+    max-width: 42vw;
   }
   .spacer {
     flex: 1 1 auto;
   }
   button {
+    display: flex;
+    align-items: center;
+    gap: 5px;
     background: none;
     border: none;
     color: #b8b8b8;
     cursor: pointer;
-    border-radius: 4px;
-    padding: 4px 7px;
-    font-size: 13px;
+    border-radius: 5px;
+    padding: 5px 7px;
+    font-size: 12px;
     line-height: 1;
     white-space: nowrap;
   }
@@ -97,14 +116,13 @@
     background: #37373d;
     color: #fff;
   }
-  .prof .ic {
+  .prof {
     color: var(--c);
-    font-size: 14px;
+  }
+  .prof:hover {
+    background: #37373d;
   }
   .tab {
-    display: flex;
-    align-items: center;
-    gap: 5px;
     max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -119,8 +137,5 @@
   .tab.active {
     background: #37373d;
     color: #fff;
-  }
-  .gear {
-    font-size: 15px;
   }
 </style>

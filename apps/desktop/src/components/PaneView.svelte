@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { X, Folder } from "@lucide/svelte";
   import { PerenePane } from "../lib/terminal";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
@@ -13,6 +14,7 @@
   const data = $derived(app.findPane(paneId));
   const isFiles = $derived(data?.kind === "files");
   const prof = $derived(profile(data?.toolProfileId ?? "shell"));
+  const HeadIcon = $derived(isFiles ? Folder : prof.icon);
   const isActive = $derived(app.activePaneId === paneId);
   const dirLabel = $derived((data?.workingDirectory ?? "").split("/").filter(Boolean).pop() ?? "~");
 
@@ -43,10 +45,10 @@
 
 <div class="pane" class:active={isActive} onpointerdown={focusPane}>
   <div class="pane-head" style="--accent:{isFiles ? '#6ea8fe' : prof.color}">
-    <span class="dot"></span>
+    <span class="hicon" style="color:{isFiles ? '#6ea8fe' : prof.color}"><HeadIcon size={13} /></span>
     <span class="label">{isFiles ? "Arquivos" : prof.label}</span>
     <span class="dir">{dirLabel}</span>
-    <button class="x" title="Fechar painel (⌘W)" onclick={() => app.closePane(paneId)}>✕</button>
+    <button class="x" title="Fechar painel (⌘W)" onclick={() => app.closePane(paneId)}><X size={13} /></button>
   </div>
   {#if isFiles}
     <div class="term"><FilesPane {paneId} /></div>
@@ -82,11 +84,9 @@
     flex: 0 0 auto;
     user-select: none;
   }
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--accent);
+  .hicon {
+    display: flex;
+    align-items: center;
     flex: 0 0 auto;
   }
   .label {
@@ -100,12 +100,13 @@
     white-space: nowrap;
   }
   .x {
+    display: flex;
+    align-items: center;
     margin-left: auto;
     background: none;
     border: none;
     color: #6a6a6a;
     cursor: pointer;
-    font-size: 11px;
     padding: 2px 4px;
     border-radius: 3px;
   }

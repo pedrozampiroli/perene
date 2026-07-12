@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { X } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
 
   const shortcuts: [string, string][] = [
@@ -18,7 +19,7 @@
   <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
     <div class="head">
       <h2>Configurações</h2>
-      <button class="close" onclick={() => (app.settingsOpen = false)}>✕</button>
+      <button class="close" onclick={() => (app.settingsOpen = false)}><X size={16} /></button>
     </div>
 
     <label class="row">

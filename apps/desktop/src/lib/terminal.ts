@@ -188,9 +188,12 @@ export class PerenePane {
         void writeText(this.term.getSelection());
         return false;
       }
-      // Shift+Enter → nova linha (Claude Code trata \n como quebra).
+      // Shift+Enter → nova linha. O Claude Code (e apps CSI-u) esperam a
+      // sequência CSI u `ESC [ 13 ; 2 u`, NÃO um simples \n (o terminal clássico
+      // não distingue Enter de Shift+Enter). Fallback universal: Ctrl+J.
       if (e.key === "Enter" && e.shiftKey) {
-        this.send("\n");
+        e.preventDefault();
+        this.send("\x1b[13;2u");
         return false;
       }
       // Colar (texto) fica com o handler nativo de `paste` do webview.

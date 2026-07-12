@@ -4,6 +4,7 @@
 // tab/pane/workspace/folder) salva SÍNCRONO; cwd e ratio de split usam debounce.
 
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "./api";
 import { buildCommand, needsSessionId } from "./profiles";
 import type {
@@ -178,20 +179,42 @@ class AppStore {
     this.save();
   }
 
-  createWorkspace(): void {
+  /** Abre o seletor nativo de pasta. Devolve o caminho ou null (cancelado). */
+  async pickDirectory(current?: string): Promise<string | null> {
+    const res = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: current ?? this.home,
+    });
+    return typeof res === "string" ? res : null;
+  }
+
+  /** Novo workspace: escolhe a pasta do projeto (picker), nome vem do basename
+   *  (editável em seguida). Devolve o id para a UI abrir o rename inline. */
+  async createWorkspaceInteractive(): Promise<string | null> {
+    const dir = await this.pickDirectory(this.home);
+    if (!dir) return null;
+    const name = dir.split("/").filter(Boolean).pop() || "Workspace";
     const ws: Workspace = {
       id: newId("ws"),
-      name: "Novo workspace",
+      name,
       order: this.manifest.workspaces.length,
       folders: [],
       tabs: [],
       activeTabId: null,
-      directory: this.home,
+      directory: dir,
     };
     this.manifest.workspaces.push(ws);
     this.manifest.activeWorkspaceId = ws.id;
     this.createTab("shell");
     this.save();
+    return ws.id;
+  }
+
+  async changeWorkspaceDirectory(id: string): Promise<void> {
+    const ws = this.manifest.workspaces.find((w) => w.id === id);
+    const dir = await this.pickDirectory(ws?.directory ?? this.home);
+    if (dir) this.setWorkspaceDirectory(id, dir);
   }
 
   renameWorkspace(id: string, name: string): void {
@@ -222,11 +245,20 @@ class AppStore {
   }
 
   // ── Folders ────────────────────────────────────────────────────────────
-  createFolder(name = "Nova pasta"): void {
+  /** Cria uma pasta e devolve o id (a UI abre o rename inline para nomear). */
+  createFolder(name = "Nova pasta"): string {
     const ws = this.activeWorkspace;
-    if (!ws) return;
-    ws.folders.push({ id: newId("fold"), name, order: ws.folders.length, collapsed: false });
+    if (!ws) return "";
+    const id = newId("fold");
+    ws.folders.push({ id, name, order: ws.folders.length, collapsed: false });
     this.save();
+    return id;
+  }
+
+  async changeFolderDirectory(id: string): Promise<void> {
+    const f = this.activeWorkspace?.folders.find((f) => f.id === id);
+    const dir = await this.pickDirectory(f?.directory ?? this.activeWorkspace?.directory ?? this.home);
+    if (dir) this.setFolderDirectory(id, dir);
   }
   renameFolder(id: string, name: string): void {
     const f = this.activeWorkspace?.folders.find((f) => f.id === id);

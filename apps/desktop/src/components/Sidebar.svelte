@@ -1,4 +1,14 @@
 <script lang="ts">
+  import {
+    Plus,
+    FolderPlus,
+    ChevronRight,
+    ChevronDown,
+    X,
+    Folder,
+    FolderOpen,
+    FolderCog,
+  } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
   import type { Tab } from "../lib/types";
@@ -28,6 +38,24 @@
     else if (e.key === "Escape") editing = null;
   }
 
+  async function newWorkspace() {
+    const id = await app.createWorkspaceInteractive();
+    if (id) {
+      const w = app.manifest.workspaces.find((w) => w.id === id);
+      if (w) startEdit("ws", id, w.name);
+    }
+  }
+  function newFolder() {
+    const id = app.createFolder("Nova pasta");
+    if (id) startEdit("folder", id, "Nova pasta");
+  }
+
+  function shortPath(p?: string | null): string {
+    if (!p) return "";
+    const parts = p.split("/").filter(Boolean);
+    return parts.length <= 2 ? "/" + parts.join("/") : "…/" + parts.slice(-2).join("/");
+  }
+
   // ── Drag & drop de abas ──────────────────────────────────────────────────
   function onDragStart(e: DragEvent, tabId: string) {
     e.dataTransfer?.setData("text/plain", tabId);
@@ -51,7 +79,7 @@
 <div class="sidebar">
   <div class="section-head">
     <span>Workspaces</span>
-    <button class="add" title="Novo workspace" onclick={() => app.createWorkspace()}>+</button>
+    <button class="add" title="Novo workspace (escolher pasta)" onclick={newWorkspace}><Plus size={15} /></button>
   </div>
   <div class="workspaces">
     {#each app.manifest.workspaces as w (w.id)}
@@ -65,58 +93,44 @@
       >
         {#if editing?.type === "ws" && editing.id === w.id}
           <!-- svelte-ignore a11y_autofocus -->
-          <input
-            bind:value={editValue}
-            onblur={commitEdit}
-            onkeydown={onEditKey}
-            autofocus
-          />
+          <input bind:value={editValue} onblur={commitEdit} onkeydown={onEditKey} autofocus />
         {:else}
           <span class="name">{w.name}</span>
           {#if app.manifest.workspaces.length > 1}
-            <button
-              class="del"
-              title="Remover workspace"
-              onclick={(e) => {
-                e.stopPropagation();
-                app.deleteWorkspace(w.id);
-              }}>✕</button
-            >
+            <button class="mini" title="Remover workspace" onclick={(e) => { e.stopPropagation(); app.deleteWorkspace(w.id); }}><X size={13} /></button>
           {/if}
         {/if}
       </div>
     {/each}
+    {#if ws}
+      <button class="dirline" title="Trocar a pasta do workspace" onclick={() => app.changeWorkspaceDirectory(ws.id)}>
+        <FolderCog size={13} />
+        <span>{shortPath(ws.directory)}</span>
+      </button>
+    {/if}
   </div>
 
   <div class="section-head">
     <span>Abas</span>
-    <button class="add" title="Nova pasta" onclick={() => app.createFolder()}>⊞</button>
+    <button class="add" title="Nova pasta" onclick={newFolder}><FolderPlus size={15} /></button>
   </div>
 
-  <!-- Área raiz (drop = tirar da pasta) -->
   <div class="tree" ondragover={allowDrop} ondrop={(e) => dropOnFolder(e, null)}>
     {#if ws}
       {#each ws.folders as folder (folder.id)}
-        <div
-          class="folder"
-          ondragover={allowDrop}
-          ondrop={(e) => dropOnFolder(e, folder.id)}
-          role="group"
-        >
+        <div class="folder" ondragover={allowDrop} ondrop={(e) => dropOnFolder(e, folder.id)} role="group">
           <div class="folder-head" onclick={() => app.toggleFolder(folder.id)} role="button" tabindex="0">
-            <span class="caret">{folder.collapsed ? "▸" : "▾"}</span>
+            <span class="caret">
+              {#if folder.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
+            </span>
+            {#if folder.collapsed}<Folder size={14} class="ficon" />{:else}<FolderOpen size={14} class="ficon" />{/if}
             {#if editing?.type === "folder" && editing.id === folder.id}
               <!-- svelte-ignore a11y_autofocus -->
               <input bind:value={editValue} onblur={commitEdit} onkeydown={onEditKey} autofocus onclick={(e) => e.stopPropagation()} />
             {:else}
-              <span
-                class="fname"
-                ondblclick={(e) => {
-                  e.stopPropagation();
-                  startEdit("folder", folder.id, folder.name);
-                }}>{folder.name}</span
-              >
-              <button class="del" title="Remover pasta" onclick={(e) => { e.stopPropagation(); app.deleteFolder(folder.id); }}>✕</button>
+              <span class="fname" ondblclick={(e) => { e.stopPropagation(); startEdit("folder", folder.id, folder.name); }}>{folder.name}</span>
+              <button class="mini" title="Definir pasta do diretório" onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
+              <button class="mini" title="Remover pasta" onclick={(e) => { e.stopPropagation(); app.deleteFolder(folder.id); }}><X size={12} /></button>
             {/if}
           </div>
           {#if !folder.collapsed}
@@ -135,6 +149,8 @@
 </div>
 
 {#snippet tabRow(tab: Tab)}
+  {@const prof = profile(tab.panes[0]?.toolProfileId ?? "shell")}
+  {@const Icon = prof.icon}
   <div
     class="tab-row"
     class:active={tab.id === ws?.activeTabId}
@@ -146,13 +162,13 @@
     role="button"
     tabindex="0"
   >
-    <span class="dot" style="background:{profile(tab.panes[0]?.toolProfileId ?? 'shell').color}"></span>
+    <span class="ticon" style="color:{prof.color}"><Icon size={14} /></span>
     {#if editing?.type === "tab" && editing.id === tab.id}
       <!-- svelte-ignore a11y_autofocus -->
       <input bind:value={editValue} onblur={commitEdit} onkeydown={onEditKey} autofocus onclick={(e) => e.stopPropagation()} />
     {:else}
       <span class="ttitle" ondblclick={(e) => { e.stopPropagation(); startEdit("tab", tab.id, tab.title); }}>{tab.title}</span>
-      <button class="del" title="Fechar aba" onclick={(e) => { e.stopPropagation(); app.closeTab(tab.id); }}>✕</button>
+      <button class="mini" title="Fechar aba" onclick={(e) => { e.stopPropagation(); app.closeTab(tab.id); }}><X size={12} /></button>
     {/if}
   </div>
 {/snippet}
@@ -179,14 +195,14 @@
     color: #7a7a7a;
   }
   .add {
+    display: flex;
+    align-items: center;
     background: none;
     border: none;
     color: #9a9a9a;
     cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-    padding: 2px 6px;
-    border-radius: 3px;
+    padding: 2px 4px;
+    border-radius: 4px;
   }
   .add:hover {
     background: #333;
@@ -223,6 +239,29 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .dirline {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    background: none;
+    border: none;
+    color: #6a6a6a;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 3px 8px 2px;
+    border-radius: 4px;
+    text-align: left;
+  }
+  .dirline:hover {
+    color: #b8b8b8;
+    background: #2a2d2e;
+  }
+  .dirline span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .tree {
     flex: 1 1 auto;
     padding: 4px 6px;
@@ -231,35 +270,39 @@
   .tab-row {
     margin-left: 6px;
   }
-  .folder .tab-row {
-    margin-left: 16px;
-  }
-  .caret {
-    width: 12px;
+  .folder :global(.ficon) {
     color: #8a8a8a;
-  }
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
     flex: 0 0 auto;
   }
-  .del {
+  .folder .tab-row {
+    margin-left: 14px;
+  }
+  .caret {
+    display: flex;
+    color: #8a8a8a;
+    flex: 0 0 auto;
+  }
+  .ticon {
+    display: flex;
+    flex: 0 0 auto;
+  }
+  .mini {
+    display: flex;
+    align-items: center;
     background: none;
     border: none;
     color: #666;
     cursor: pointer;
-    font-size: 10px;
-    padding: 2px 4px;
+    padding: 2px;
     border-radius: 3px;
     opacity: 0;
   }
-  .ws-row:hover .del,
-  .tab-row:hover .del,
-  .folder-head:hover .del {
+  .ws-row:hover .mini,
+  .tab-row:hover .mini,
+  .folder-head:hover .mini {
     opacity: 1;
   }
-  .del:hover {
+  .mini:hover {
     color: #eee;
     background: #4a4a4a;
   }

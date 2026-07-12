@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { GitBranch, RefreshCw, ArrowDownToLine, GitPullRequestArrow, X } from "@lucide/svelte";
   import type { EditorView } from "@codemirror/view";
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
@@ -158,7 +159,7 @@
     {#if gs?.isRepo}
       <div class="branch-wrap">
         <button class="branch" onclick={toggleBranchMenu} title="Trocar/criar branch">
-          ⑂ {gs.branch}{#if dirtyDoc || gs.dirty}<span class="dot"></span>{/if}
+          <GitBranch size={14} /> {gs.branch}{#if dirtyDoc || gs.dirty}<span class="dot"></span>{/if}
         </button>
         {#if gs.ahead > 0}<span class="ab">↑{gs.ahead}</span>{/if}
         {#if gs.behind > 0}<span class="ab">↓{gs.behind}</span>{/if}
@@ -175,9 +176,9 @@
         {/if}
       </div>
       <div class="spacer"></div>
-      <button onclick={() => withRoot((r) => api.gitFetch(r), "fetch ok")} title="Fetch">⟳ fetch</button>
-      <button onclick={() => withRoot((r) => api.gitPull(r), "pull ok")} title="Pull">↓ pull</button>
-      <button onclick={() => gs?.root && api.gitOpenPr(gs.root).catch((e) => flash(String(e)))} title="Abrir PR no browser">PR ↗</button>
+      <button onclick={() => withRoot((r) => api.gitFetch(r), "fetch ok")} title="Fetch"><RefreshCw size={13} /> fetch</button>
+      <button onclick={() => withRoot((r) => api.gitPull(r), "pull ok")} title="Pull"><ArrowDownToLine size={13} /> pull</button>
+      <button onclick={() => gs?.root && api.gitOpenPr(gs.root).catch((e) => flash(String(e)))} title="Abrir PR no browser"><GitPullRequestArrow size={13} /> PR</button>
     {:else}
       <span class="norepo">Sem repositório git em {root}</span>
     {/if}
@@ -306,6 +307,9 @@
   }
   .new button,
   .gitbar button:not(.branch) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     background: #333;
     border: none;
     color: #ccc;

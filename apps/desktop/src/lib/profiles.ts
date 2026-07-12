@@ -2,20 +2,22 @@
 // comando de spawn (incluindo as flags YOLO). O comando só roda no PRIMEIRO
 // spawn de um pane; reattaches ao daemon o ignoram (o PTY já existe).
 
+import type { Component } from "svelte";
+import { Terminal, Sparkles, Bot, SquareCode } from "@lucide/svelte";
 import type { Pane, Settings } from "./types";
 
 export interface ToolProfile {
   id: string;
   label: string;
-  icon: string;
+  icon: Component;
   color: string;
 }
 
 export const PROFILES: ToolProfile[] = [
-  { id: "shell", label: "Shell", icon: "❯", color: "#9aa0a6" },
-  { id: "claude", label: "Claude", icon: "✳", color: "#d97757" },
-  { id: "codex", label: "Codex", icon: "◆", color: "#10a37f" },
-  { id: "opencode", label: "OpenCode", icon: "◇", color: "#6ea8fe" },
+  { id: "shell", label: "Shell", icon: Terminal, color: "#9aa0a6" },
+  { id: "claude", label: "Claude", icon: Sparkles, color: "#d97757" },
+  { id: "codex", label: "Codex", icon: Bot, color: "#10a37f" },
+  { id: "opencode", label: "OpenCode", icon: SquareCode, color: "#6ea8fe" },
 ];
 
 export function profile(id: string): ToolProfile {

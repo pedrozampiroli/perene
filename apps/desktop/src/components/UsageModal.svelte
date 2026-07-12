@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { X } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
   import { profile } from "../lib/profiles";
@@ -40,7 +41,7 @@
   <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
     <div class="head">
       <h2>Uso de tokens</h2>
-      <button class="close" onclick={() => (app.usageOpen = false)}>✕</button>
+      <button class="close" onclick={() => (app.usageOpen = false)}><X size={16} /></button>
     </div>
 
     {#if loading}
@@ -48,9 +49,11 @@
     {:else}
       <div class="cards">
         {#each stats as s (s.harness)}
-          <div class="card" style="--c:{profile(s.harness).color}">
+          {@const P = profile(s.harness)}
+          {@const Icon = P.icon}
+          <div class="card" style="--c:{P.color}">
             <div class="ct">
-              <span class="ic">{profile(s.harness).icon}</span>{profile(s.harness).label}
+              <span class="ic"><Icon size={14} /></span>{P.label}
             </div>
             <div class="big">{fmt(s.input + s.output)}</div>
             <div class="sub">tokens · {s.sessions} sessões</div>
