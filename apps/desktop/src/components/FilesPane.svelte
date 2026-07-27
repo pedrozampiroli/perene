@@ -746,6 +746,9 @@
   }
   .sidepanel {
     overflow: hidden auto;
+    /* Reserva o espaço da barra de rolagem SEMPRE: sem ela, abrir uma aba com
+       lista longa (Commits) fazia a barra aparecer e cortar a largura. */
+    scrollbar-gutter: stable;
     padding: 4px 0;
     min-width: 0;
   }
@@ -873,6 +876,12 @@
     font-size: 10.5px;
     color: #8a8a8a;
     margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .commit {
+    overflow: hidden;
   }
   .wtform {
     display: flex;
