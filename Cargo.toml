@@ -17,8 +17,8 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-authors = ["Pedro Zampiroli <assinaturas@tegasistemas.com.br>"]
-repository = "https://github.com/zampiroli/perene-tauri"
+authors = ["Pedro Zampiroli <zampiroli.pedroh@gmail.com>"]
+repository = "https://github.com/pedrozampiroli/perene"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
