@@ -9,6 +9,12 @@
     GitPullRequestArrow,
     GitCommitHorizontal,
     FolderGit2,
+    FolderTree,
+    FileDiff,
+    GitCommitVertical,
+    GitBranchPlus,
+    Search,
+    TextSearch,
     Code2,
     Terminal,
     X,
@@ -143,9 +149,12 @@
   });
 
   onMount(async () => {
+    // Este editor passa a atender os pedidos de "abrir arquivo" da palette (⌘P/⌘⇧F).
+    app.openInEditor = (path: string, line?: number) => void openFile(path, line);
     await Promise.all([loadStatus(), loadRoot()]);
   });
   onDestroy(() => {
+    if (app.openInEditor) app.openInEditor = null;
     editorView?.destroy();
     mergeView?.destroy();
   });
@@ -165,7 +174,7 @@
     }
   }
 
-  async function openFile(path: string) {
+  async function openFile(path: string, line?: number) {
     mode = "edit";
     if (!openFiles.some((f) => f.path === path)) {
       let content = "";
@@ -182,6 +191,17 @@
       openFiles.push({ path, name, dirty: false });
     }
     activeFilePath = path;
+    if (line) pendingLine = { path, line };
+  }
+
+  /** Linha a revelar assim que o arquivo virar o ativo (vindo da busca). */
+  let pendingLine: { path: string; line: number } | null = null;
+
+  function revealLine(view: EditorView, line: number) {
+    const l = Math.max(1, Math.min(line, view.state.doc.lines));
+    const pos = view.state.doc.line(l).from;
+    view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
+    view.focus();
   }
 
   function switchFile(path: string) {
@@ -216,6 +236,10 @@
       editorView = new EditorView({ state: st, parent: editorHost });
       shownPath = path;
       editorView.focus();
+      if (pendingLine && pendingLine.path === path) {
+        revealLine(editorView, pendingLine.line);
+        pendingLine = null;
+      }
       return;
     }
     if (path !== shownPath) {
@@ -223,6 +247,10 @@
       editorView.setState(fileStates.get(path)!);
       shownPath = path;
       editorView.focus();
+    }
+    if (pendingLine && pendingLine.path === path && editorView) {
+      revealLine(editorView, pendingLine.line);
+      pendingLine = null;
     }
   });
 
@@ -352,15 +380,30 @@
     {/if}
   </div>
 
+  <!-- Abas só com ÍCONE (estilo Zed): largura fixa → o layout nunca "pula". -->
   <div class="tabs">
-    <button class:active={tab === "files"} onclick={() => switchTab("files")}>{t("editor.files")}</button>
-    <button class:active={tab === "changes"} onclick={() => switchTab("changes")}>
-      {t("editor.changes")}{#if gs && gs.files.length}<span class="count">{gs.files.length}</span>{/if}
+    <button class:active={tab === "files"} title={t("editor.files")} onclick={() => switchTab("files")}>
+      <FolderTree size={16} />
+    </button>
+    <button class:active={tab === "changes"} title={t("editor.changes")} onclick={() => switchTab("changes")}>
+      <FileDiff size={16} />
+      {#if gs && gs.files.length}<span class="badge">{gs.files.length}</span>{/if}
     </button>
     {#if gs?.isRepo}
-      <button class:active={tab === "commits"} onclick={() => switchTab("commits")}>{t("editor.commits")}</button>
-      <button class:active={tab === "worktrees"} onclick={() => switchTab("worktrees")}>{t("editor.worktrees")}</button>
+      <button class:active={tab === "commits"} title={t("editor.commits")} onclick={() => switchTab("commits")}>
+        <GitCommitVertical size={16} />
+      </button>
+      <button class:active={tab === "worktrees"} title={t("editor.worktrees")} onclick={() => switchTab("worktrees")}>
+        <GitBranchPlus size={16} />
+      </button>
     {/if}
+    <div class="tabs-spacer"></div>
+    <button class="tool" title={t("search.quickOpen") + " (⌘P)"} onclick={() => app.openQuickOpen(root)}>
+      <Search size={16} />
+    </button>
+    <button class="tool" title={t("search.globalSearch") + " (⌘⇧F)"} onclick={() => app.openGlobalSearch(root)}>
+      <TextSearch size={16} />
+    </button>
   </div>
 
   <div class="body" style="--pw:{app.settings.editorPanelWidth}px">
@@ -644,34 +687,48 @@
     border-bottom: 1px solid #2a2a2a;
   }
   .tabs button {
-    /* Larguras IGUAIS: trocar de aba não muda mais o layout. */
-    flex: 1 1 0;
-    min-width: 0;
+    position: relative;
+    flex: 0 0 auto;
+    width: 38px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 5px;
     background: none;
     border: none;
-    color: #9aa0a6;
-    padding: 0 8px;
+    color: #8a8a8a;
+    padding: 0;
     cursor: pointer;
-    font-size: 12px;
     border-bottom: 2px solid transparent;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  }
+  .tabs button:hover {
+    color: #ddd;
+    background: #2a2d2e;
+  }
+  .tabs .tool {
+    width: 32px;
+    color: #7a7a7a;
   }
   .tabs button.active {
     color: #fff;
     border-bottom-color: #007acc;
   }
-  .count {
-    background: #37373d;
-    border-radius: 8px;
-    padding: 0 6px;
-    font-size: 10px;
-    flex: 0 0 auto;
+  .badge {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    min-width: 13px;
+    height: 13px;
+    padding: 0 3px;
+    box-sizing: border-box;
+    background: #0e639c;
+    color: #fff;
+    border-radius: 7px;
+    font-size: 9px;
+    line-height: 13px;
+    text-align: center;
+  }
+  .tabs-spacer {
+    flex: 1 1 auto;
   }
   /* Cabeçalho do editor com altura fixa (não "pula" entre editar e diff). */
   .editor-head {
@@ -684,13 +741,23 @@
   .body {
     flex: 1 1 auto;
     display: grid;
-    grid-template-columns: var(--pw, 240px) 1px 1fr;
+    grid-template-columns: var(--pw, 240px) 1px minmax(0, 1fr);
     min-height: 0;
   }
   .sidepanel {
-    overflow-y: auto;
+    overflow: hidden auto;
     padding: 4px 0;
     min-width: 0;
+  }
+  /* Nada dentro do painel pode esticar a coluna (era isso que mudava o layout). */
+  .sidepanel * {
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .main {
+    min-width: 0;
+    overflow: hidden;
   }
   .pdivider {
     position: relative;

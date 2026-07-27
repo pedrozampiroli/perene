@@ -15,6 +15,7 @@ import type {
   Settings,
   SplitDirection,
   Tab,
+  SearchHit,
   Workspace,
   Worktree,
 } from "./types";
@@ -143,6 +144,20 @@ export interface NewSession {
   error: string;
 }
 
+/** Palette de busca: quick open (⌘P), busca global (⌘⇧F) e substituição (⌘⇧H). */
+export interface SearchPalette {
+  mode: "quickOpen" | "search" | "replace";
+  root: string;
+  query: string;
+  replacement: string;
+  files: string[];
+  hits: SearchHit[];
+  loading: boolean;
+  message: string;
+  /** Abre um arquivo (e opcionalmente numa linha). Setado pelo editor ativo. */
+  onOpen?: (path: string, line?: number) => void;
+}
+
 class AppStore {
   manifest = $state<Manifest>({ version: 3, activeWorkspaceId: null, workspaces: [] });
   settings = $state<Settings>({
@@ -164,6 +179,9 @@ class AppStore {
   confirm = $state<ConfirmState | null>(null);
   newSession = $state<NewSession | null>(null);
   contextMenu = $state<ContextMenuState | null>(null);
+  palette = $state<SearchPalette | null>(null);
+  /** Callback do editor ativo pra abrir arquivo (path, linha). */
+  openInEditor: ((path: string, line?: number) => void) | null = null;
   home = "";
 
   /** Panes criados NESTA sessão (spawn fresco). Os demais, ao serem restaurados
@@ -326,6 +344,79 @@ class AppStore {
       }
     }
     this.nameModal = null;
+  }
+
+  // ── Busca: quick open (⌘P), busca global (⌘⇧F), substituição (⌘⇧H) ─────────
+  private newPalette(mode: SearchPalette["mode"], root: string): SearchPalette {
+    return {
+      mode,
+      root: root || this.currentDir,
+      query: "",
+      replacement: "",
+      files: [],
+      hits: [],
+      loading: false,
+      message: "",
+    };
+  }
+
+  async openQuickOpen(root?: string): Promise<void> {
+    const p = this.newPalette("quickOpen", root ?? this.currentDir);
+    this.palette = p;
+    p.loading = true;
+    try {
+      p.files = await api.fsListFiles(p.root, 20000);
+    } catch {
+      p.files = [];
+    }
+    p.loading = false;
+  }
+
+  openGlobalSearch(root?: string): void {
+    this.palette = this.newPalette("search", root ?? this.currentDir);
+  }
+  openGlobalReplace(root?: string): void {
+    this.palette = this.newPalette("replace", root ?? this.currentDir);
+  }
+
+  async runSearch(): Promise<void> {
+    const p = this.palette;
+    if (!p || !p.query.trim()) return;
+    p.loading = true;
+    p.message = "";
+    try {
+      p.hits = await api.searchInFiles(p.root, p.query, false, 500);
+      if (!p.hits.length) p.message = t("search.noResults");
+    } catch (e) {
+      p.hits = [];
+      p.message = String(e);
+    }
+    p.loading = false;
+  }
+
+  async runReplace(): Promise<void> {
+    const p = this.palette;
+    if (!p || !p.query.trim()) return;
+    const files = [...new Set(p.hits.map((h) => h.path))];
+    if (!files.length) return;
+    p.loading = true;
+    try {
+      const n = await api.replaceInFiles(p.root, p.query, p.replacement, files);
+      p.message = t("search.replaced", { count: n });
+      p.hits = [];
+    } catch (e) {
+      p.message = String(e);
+    }
+    p.loading = false;
+  }
+
+  /** Abre um resultado no editor (o editor registra o callback). */
+  openHit(relPath: string, line?: number): void {
+    const p = this.palette;
+    if (!p) return;
+    const abs = relPath.startsWith("/") ? relPath : `${p.root}/${relPath}`;
+    this.palette = null;
+    this.openInEditor?.(abs, line);
   }
 
   // ── Menu de contexto (botão direito) ───────────────────────────────────────

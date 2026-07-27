@@ -123,6 +123,12 @@ export interface Commit {
   date: string;
 }
 
+export interface SearchHit {
+  path: string;
+  line: number;
+  text: string;
+}
+
 export interface Worktree {
   path: string;
   branch: string;

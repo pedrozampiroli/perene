@@ -12,6 +12,7 @@
   import ConfirmModal from "./components/ConfirmModal.svelte";
   import NewSessionModal from "./components/NewSessionModal.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
+  import SearchPalette from "./components/SearchPalette.svelte";
 
   const isMac = navigator.userAgent.toLowerCase().includes("mac");
 
@@ -48,6 +49,23 @@
       app.settingsOpen = !app.settingsOpen;
       return;
     }
+    // Busca (estilo VSCodium). ⌘F/⌘H dentro do editor são do CodeMirror.
+    if (k === "p" && !e.shiftKey) {
+      e.preventDefault();
+      void app.openQuickOpen();
+      return;
+    }
+    if (k === "f" && e.shiftKey) {
+      e.preventDefault();
+      app.openGlobalSearch();
+      return;
+    }
+    if (k === "h" && e.shiftKey) {
+      e.preventDefault();
+      app.openGlobalReplace();
+      return;
+    }
+
     const group = isMac ? !e.shiftKey : e.shiftKey;
     if (group && k === "y") {
       e.preventDefault();
@@ -114,6 +132,7 @@
   <ConfirmModal />
   <NewSessionModal />
   <ContextMenu />
+  <SearchPalette />
 {:else}
   <div class="splash">Perene…</div>
 {/if}

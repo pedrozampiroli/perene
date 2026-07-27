@@ -53,6 +53,149 @@ pub fn fs_write_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
+// ── Busca (⌘P quick open · ⌘⇧F busca global · ⌘⇧H substituição global) ───────
+
+/// Diretórios que nunca entram na busca (ruído + performance).
+const SKIP_DIRS: &[&str] = &[
+    ".git", "node_modules", "target", "dist", "build", ".next", ".venv", "venv",
+    "__pycache__", ".cache", ".svelte-kit", "vendor", ".perene",
+];
+
+fn is_skipped(name: &str) -> bool {
+    SKIP_DIRS.contains(&name)
+}
+
+fn walk_files(dir: &PathBuf, root: &PathBuf, out: &mut Vec<String>, limit: usize) {
+    if out.len() >= limit {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if out.len() >= limit {
+            return;
+        }
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            if is_skipped(&name) {
+                continue;
+            }
+            walk_files(&path, root, out, limit);
+        } else {
+            if let Ok(rel) = path.strip_prefix(root) {
+                out.push(rel.to_string_lossy().to_string());
+            }
+        }
+    }
+}
+
+/// Lista os arquivos do projeto (caminhos relativos) para o quick open (⌘P).
+#[tauri::command]
+pub fn fs_list_files(root: String, limit: Option<usize>) -> Vec<String> {
+    let root_buf = PathBuf::from(&root);
+    let mut out = Vec::new();
+    walk_files(&root_buf, &root_buf, &mut out, limit.unwrap_or(20_000));
+    out
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHit {
+    /// Caminho relativo à raiz.
+    pub path: String,
+    pub line: u32,
+    pub text: String,
+}
+
+/// Busca global por texto. Usa `rg` (ripgrep) quando disponível; senão, `grep -rn`.
+#[tauri::command]
+pub fn search_in_files(
+    root: String,
+    query: String,
+    case_sensitive: bool,
+    limit: Option<usize>,
+) -> Vec<SearchHit> {
+    if query.trim().is_empty() {
+        return Vec::new();
+    }
+    let max = limit.unwrap_or(500);
+    let has_rg = Command::new("rg").arg("--version").output().is_ok();
+
+    let out = if has_rg {
+        let mut c = Command::new("rg");
+        c.arg("--line-number").arg("--no-heading").arg("--fixed-strings").arg("--color=never");
+        if !case_sensitive {
+            c.arg("--ignore-case");
+        }
+        for d in SKIP_DIRS {
+            c.arg("--glob").arg(format!("!{d}/**"));
+        }
+        c.arg("--max-count").arg("50").arg("--").arg(&query).arg(".").current_dir(&root).output()
+    } else {
+        let mut c = Command::new("grep");
+        c.arg("-rn").arg("-F");
+        if !case_sensitive {
+            c.arg("-i");
+        }
+        for d in SKIP_DIRS {
+            c.arg(format!("--exclude-dir={d}"));
+        }
+        c.arg("--").arg(&query).arg(".").current_dir(&root).output()
+    };
+
+    let Ok(out) = out else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .take(max)
+        .filter_map(|line| {
+            // formato: ./caminho:LINHA:texto
+            let rest = line.strip_prefix("./").unwrap_or(line);
+            let mut parts = rest.splitn(3, ':');
+            let path = parts.next()?.to_string();
+            let line_no: u32 = parts.next()?.parse().ok()?;
+            let text = parts.next().unwrap_or("").trim_end().to_string();
+            Some(SearchHit {
+                path,
+                line: line_no,
+                text: text.chars().take(300).collect(),
+            })
+        })
+        .collect()
+}
+
+/// Substitui `query` por `replacement` nos arquivos indicados (caminhos relativos).
+/// Devolve quantos arquivos foram alterados.
+#[tauri::command]
+pub fn replace_in_files(
+    root: String,
+    query: String,
+    replacement: String,
+    files: Vec<String>,
+) -> Result<u32, String> {
+    if query.is_empty() {
+        return Err("busca vazia".into());
+    }
+    let root_buf = PathBuf::from(&root);
+    let mut changed = 0u32;
+    for rel in files {
+        let path = root_buf.join(&rel);
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue; // binário/ilegível → pula
+        };
+        if !content.contains(&query) {
+            continue;
+        }
+        let new = content.replace(&query, &replacement);
+        std::fs::write(&path, new).map_err(|e| format!("{rel}: {e}"))?;
+        changed += 1;
+    }
+    Ok(changed)
+}
+
 // ── Git ──────────────────────────────────────────────────────────────────────
 
 fn git(repo: &str, args: &[&str]) -> Result<String, String> {
@@ -435,5 +578,48 @@ mod tests {
         assert_eq!(extract_after("main...origin/main [ahead 3, behind 2]", "ahead "), Some(3));
         assert_eq!(extract_after("main...origin/main [ahead 3, behind 2]", "behind "), Some(2));
         assert_eq!(extract_after("main", "ahead "), None);
+    }
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+
+    #[test]
+    fn lists_project_files_skipping_noise() {
+        let root = std::env::current_dir().unwrap().to_string_lossy().to_string();
+        let files = fs_list_files(root, Some(5000));
+        assert!(!files.is_empty(), "deveria listar arquivos do projeto");
+        assert!(
+            !files.iter().any(|f| f.contains("node_modules") || f.contains(".git/")),
+            "não pode incluir diretórios de ruído"
+        );
+    }
+
+    #[test]
+    fn searches_text_in_files() {
+        let root = std::env::current_dir().unwrap().to_string_lossy().to_string();
+        // string que só existe no código deste crate
+        let hits = search_in_files(root, "fn search_in_files".into(), true, Some(50));
+        assert!(!hits.is_empty(), "deveria achar a própria função");
+        assert!(hits.iter().any(|h| h.path.ends_with("files.rs")));
+        assert!(hits[0].line > 0);
+    }
+
+    #[test]
+    fn replace_in_files_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("perene-repl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.txt"), "alpha beta alpha").unwrap();
+        let n = replace_in_files(
+            dir.to_string_lossy().to_string(),
+            "alpha".into(),
+            "gamma".into(),
+            vec!["a.txt".into()],
+        )
+        .unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "gamma beta gamma");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

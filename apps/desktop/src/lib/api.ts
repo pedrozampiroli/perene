@@ -7,6 +7,7 @@ import type {
   GitStatus,
   Manifest,
   SessionRecord,
+  SearchHit,
   Settings,
   ShellOption,
   UsageStats,
@@ -31,6 +32,12 @@ export const api = {
   fsReadFile: (path: string) => invoke<string>("fs_read_file", { path }),
   fsWriteFile: (path: string, content: string) =>
     invoke<void>("fs_write_file", { path, content }),
+  fsListFiles: (root: string, limit?: number) =>
+    invoke<string[]>("fs_list_files", { root, limit }),
+  searchInFiles: (root: string, query: string, caseSensitive = false, limit?: number) =>
+    invoke<SearchHit[]>("search_in_files", { root, query, caseSensitive, limit }),
+  replaceInFiles: (root: string, query: string, replacement: string, files: string[]) =>
+    invoke<number>("replace_in_files", { root, query, replacement, files }),
   gitStatus: (path: string) => invoke<GitStatus>("git_status", { path }),
   gitDiff: (root: string, file: string) => invoke<string>("git_diff", { root, file }),
   gitFileVersions: (root: string, file: string) =>
