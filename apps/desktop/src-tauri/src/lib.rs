@@ -52,6 +52,7 @@ pub fn run() {
             files::git_commit,
             files::git_worktree_list,
             files::git_worktree_add,
+            files::create_project_worktree,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Perene");

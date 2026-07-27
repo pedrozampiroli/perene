@@ -170,6 +170,7 @@ fn spawn_attach_reattach_preserves_scrollback_and_process() {
         rows: 24,
         cwd: Some(dir.path().to_string_lossy().to_string()),
         command: Some(format!("printf '{MARKER}\\n'")),
+        shell: None,
     }));
     c1.send(&ClientMessage::Attach {
         pane_id: pane_id.clone(),

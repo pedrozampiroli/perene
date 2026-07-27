@@ -10,6 +10,7 @@
   import UsageModal from "./components/UsageModal.svelte";
   import NameModal from "./components/NameModal.svelte";
   import ConfirmModal from "./components/ConfirmModal.svelte";
+  import NewSessionModal from "./components/NewSessionModal.svelte";
 
   const isMac = navigator.userAgent.toLowerCase().includes("mac");
 
@@ -54,7 +55,7 @@
     // Grupo T/W/D: mac = só Cmd; win/linux = Ctrl+Shift (evita colidir com o PTY).
     if (group && k === "t") {
       e.preventDefault();
-      app.createTab("shell");
+      app.startNewSession("shell");
       return;
     }
     if (group && k === "w") {
@@ -93,6 +94,7 @@
   {/if}
   <NameModal />
   <ConfirmModal />
+  <NewSessionModal />
 {:else}
   <div class="splash">Perene…</div>
 {/if}

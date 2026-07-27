@@ -50,4 +50,6 @@ export const api = {
   gitWorktreeList: (root: string) => invoke<Worktree[]>("git_worktree_list", { root }),
   gitWorktreeAdd: (root: string, path: string, branch: string, create: boolean) =>
     invoke<string>("git_worktree_add", { root, path, branch, create }),
+  createProjectWorktree: (repo: string, base: string, name: string) =>
+    invoke<string>("create_project_worktree", { repo, base, name }),
 };

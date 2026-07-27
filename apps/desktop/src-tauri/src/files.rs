@@ -353,6 +353,44 @@ pub fn git_worktree_list(root: String) -> Result<Vec<Worktree>, String> {
     Ok(out)
 }
 
+/// Cria uma worktree isolada do projeto em `.perene/worktrees/<name>`, num branch
+/// novo `<name>` baseado em `base`, e garante que `.perene/` está no `.gitignore`.
+/// Devolve o caminho da worktree (pra abrir a sessão nela).
+#[tauri::command]
+pub fn create_project_worktree(repo: String, base: String, name: String) -> Result<String, String> {
+    let root = repo_root(&repo).ok_or_else(|| "não é um repositório git".to_string())?;
+    // Nome seguro para branch/pasta.
+    let safe: String = name
+        .trim()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || matches!(c, '-' | '_' | '/' | '.') { c } else { '-' })
+        .collect();
+    let safe = if safe.is_empty() { "sessao".to_string() } else { safe };
+
+    let wt_dir = format!("{root}/.perene/worktrees/{safe}");
+    // Garante o .gitignore ANTES (pra pasta já nascer ignorada).
+    ensure_gitignore_line(&root, ".perene/");
+    git(&root, &["worktree", "add", "-b", &safe, &wt_dir, &base])?;
+    Ok(wt_dir)
+}
+
+/// Adiciona uma linha ao `.gitignore` do repo se ainda não existir.
+fn ensure_gitignore_line(root: &str, line: &str) {
+    let path = PathBuf::from(root).join(".gitignore");
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    if content.lines().any(|l| l.trim() == line.trim()) {
+        return;
+    }
+    let mut out = content;
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str("\n# Worktrees isoladas do Perene\n");
+    out.push_str(line);
+    out.push('\n');
+    let _ = std::fs::write(&path, out);
+}
+
 /// Cria um worktree. `create=true` cria um branch novo (`-b`); senão faz checkout
 /// de um branch existente naquele caminho.
 #[tauri::command]

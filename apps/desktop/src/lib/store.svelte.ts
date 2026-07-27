@@ -113,9 +113,20 @@ export interface ConfirmState {
   onConfirm: () => void;
 }
 
+export interface NewSession {
+  profileId: string;
+  repoRoot: string | null;
+  useWorktree: boolean;
+  base: string;
+  branches: string[];
+  name: string;
+  creating: boolean;
+  error: string;
+}
+
 class AppStore {
   manifest = $state<Manifest>({ version: 3, activeWorkspaceId: null, workspaces: [] });
-  settings = $state<Settings>({ yolo: false, fontSize: 13, webgl: false, shell: "" });
+  settings = $state<Settings>({ yolo: false, fontSize: 13, webgl: false, shell: "", askWorktree: true });
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
   settingsOpen = $state(false);
@@ -123,6 +134,7 @@ class AppStore {
   usageOpen = $state(false);
   nameModal = $state<NameModal | null>(null);
   confirm = $state<ConfirmState | null>(null);
+  newSession = $state<NewSession | null>(null);
   home = "";
 
   /** Panes criados NESTA sessão (spawn fresco). Os demais, ao serem restaurados
@@ -510,6 +522,93 @@ class AppStore {
     tab.activePaneId = pane.id;
     this.activePaneId = pane.id;
     this.save();
+  }
+
+  /** Cria uma aba com um cwd específico (usado pelas worktrees isoladas). */
+  createTabInDir(profileId: string, dir: string, title?: string): void {
+    const ws = this.activeWorkspace;
+    if (!ws) return;
+    const pane = this.makePane(profileId, dir);
+    const tab: Tab = {
+      id: newId("tab"),
+      folderId: null,
+      title: title ?? profileId,
+      panes: [pane],
+      layout: leaf(pane.id),
+      activePaneId: pane.id,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    ws.tabs.push(tab);
+    ws.activeTabId = tab.id;
+    this.activePaneId = pane.id;
+    this.save();
+  }
+
+  // ── Nova sessão (com opção de worktree isolada) ────────────────────────────
+  async startNewSession(profileId: string): Promise<void> {
+    const ws = this.activeWorkspace;
+    if (!ws) return;
+    // Sem "perguntar" ligado → cria direto no diretório do projeto.
+    if (!this.settings.askWorktree) {
+      this.createTab(profileId);
+      return;
+    }
+    const dir = ws.directory ?? this.home;
+    let gs = null;
+    try {
+      gs = await api.gitStatus(dir);
+    } catch {
+      gs = null;
+    }
+    // Fora de repo git → worktree não faz sentido; cria direto.
+    if (!gs?.isRepo || !gs.root) {
+      this.createTab(profileId);
+      return;
+    }
+    let branches: string[] = [];
+    try {
+      branches = await api.gitBranches(gs.root);
+    } catch {
+      branches = [gs.branch];
+    }
+    this.newSession = {
+      profileId,
+      repoRoot: gs.root,
+      useWorktree: false,
+      base: gs.branch,
+      branches,
+      name: `${profileId}-${uuid().slice(0, 5)}`,
+      creating: false,
+      error: "",
+    };
+  }
+
+  async confirmNewSession(): Promise<void> {
+    const s = this.newSession;
+    if (!s) return;
+    if (!s.useWorktree) {
+      this.newSession = null;
+      this.createTab(s.profileId);
+      return;
+    }
+    if (!s.repoRoot || !s.name.trim()) return;
+    s.creating = true;
+    s.error = "";
+    try {
+      const wt = await api.createProjectWorktree(s.repoRoot, s.base, s.name.trim());
+      const label = s.name.trim().split("/").pop() ?? s.name.trim();
+      this.newSession = null;
+      this.createTabInDir(s.profileId, wt, `⑂ ${label}`);
+    } catch (e) {
+      s.creating = false;
+      s.error = String(e);
+    }
+  }
+
+  setAskWorktree(v: boolean): void {
+    this.settings.askWorktree = v;
+    this.saveSettings();
   }
 
   selectTab(id: string): void {

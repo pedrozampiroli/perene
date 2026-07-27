@@ -66,6 +66,7 @@ export interface Settings {
   fontSize: number;
   webgl: boolean;
   shell: string; // "" = padrão do sistema
+  askWorktree: boolean;
 }
 
 export interface ShellOption {

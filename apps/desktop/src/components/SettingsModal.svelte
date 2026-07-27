@@ -44,6 +44,14 @@
 
     <label class="row">
       <div>
+        <div class="t">Perguntar worktree em nova sessão</div>
+        <div class="sub">Ao abrir uma sessão num repo, oferece criar uma worktree isolada.</div>
+      </div>
+      <input type="checkbox" checked={app.settings.askWorktree} onchange={(e) => app.setAskWorktree(e.currentTarget.checked)} />
+    </label>
+
+    <label class="row">
+      <div>
         <div class="t">Renderizador WebGL</div>
         <div class="sub">Mais rápido, porém MUITO mais RAM. Desligado por padrão.</div>
       </div>

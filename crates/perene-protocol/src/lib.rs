@@ -139,6 +139,7 @@ mod tests {
             rows: 24,
             cwd: None,
             command: None,
+            shell: None,
         };
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"paneId\""), "wire deve ser camelCase: {json}");

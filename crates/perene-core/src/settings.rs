@@ -20,6 +20,13 @@ pub struct Settings {
     /// sistema (`$SHELL` / PowerShell).
     #[serde(default)]
     pub shell: String,
+    /// Perguntar sobre criar worktree isolada ao abrir nova sessão.
+    #[serde(default = "default_true")]
+    pub ask_worktree: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -29,6 +36,7 @@ impl Default for Settings {
             font_size: 13,
             webgl: false,
             shell: String::new(),
+            ask_worktree: true,
         }
     }
 }
@@ -77,6 +85,7 @@ mod tests {
             font_size: 15,
             webgl: true,
             shell: "/bin/bash".into(),
+            ask_worktree: false,
         };
         store.save(&s).unwrap();
         assert_eq!(store.load().unwrap(), s);

@@ -26,7 +26,7 @@
   <div class="group profiles">
     {#each PROFILES as p (p.id)}
       {@const Icon = p.icon}
-      <button class="prof" style="--c:{p.color}" title={"Novo " + p.label} onclick={() => app.createTab(p.id)}>
+      <button class="prof" style="--c:{p.color}" title={"Nova sessão " + p.label} onclick={() => app.startNewSession(p.id)}>
         <Icon size={16} />
       </button>
     {/each}

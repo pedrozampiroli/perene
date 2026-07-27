@@ -16,7 +16,7 @@
 {:else}
   <div class="empty">
     <p>Nenhuma aba aberta.</p>
-    <button onclick={() => app.createTab("shell")}>+ Novo terminal</button>
+    <button onclick={() => app.startNewSession("shell")}>+ Nova sessão</button>
   </div>
 {/if}
 
