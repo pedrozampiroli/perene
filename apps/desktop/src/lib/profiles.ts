@@ -60,15 +60,23 @@ export function buildCommand(pane: Pane, settings: Settings, isFresh: boolean): 
   const id = pane.harnessSessionId ?? "";
   const yolo = yoloFlag(p, settings.yolo);
 
+  // Fallback gracioso: se o resume falhar (sessão inexistente/cwd mudou), inicia
+  // uma sessão nova em vez de largar o usuário num "session not found" + shell.
+  // Para o Claude, o fresh mantém o mesmo id (`--session-id`) pra próxima vez o
+  // resume funcionar.
+  const claudeFresh = `claude --session-id ${id}${yolo}`;
+  const codexFresh = `codex${yolo}`;
+  const opencodeFresh = `opencode${yolo}`;
+
   if (pane.resumeExisting) {
     // Aberto do histórico: retoma a sessão exata.
     switch (p) {
       case "claude":
-        return `claude --resume ${id}${yolo}`;
+        return `claude --resume ${id}${yolo} || ${claudeFresh}`;
       case "codex":
-        return `codex resume ${id}${yolo}`;
+        return `codex resume ${id}${yolo} || ${codexFresh}`;
       case "opencode":
-        return `opencode --session ${id}${yolo}`;
+        return `opencode --session ${id}${yolo} || ${opencodeFresh}`;
       default:
         return null;
     }
@@ -77,11 +85,11 @@ export function buildCommand(pane: Pane, settings: Settings, isFresh: boolean): 
   if (isFresh) {
     switch (p) {
       case "claude":
-        return `claude --session-id ${id}${yolo}`;
+        return claudeFresh;
       case "codex":
-        return `codex${yolo}`;
+        return codexFresh;
       case "opencode":
-        return `opencode${yolo}`;
+        return opencodeFresh;
       default:
         return null;
     }
@@ -90,11 +98,11 @@ export function buildCommand(pane: Pane, settings: Settings, isFresh: boolean): 
   // Restauração pós-reboot: retoma a conversa mais recente do diretório.
   switch (p) {
     case "claude":
-      return `claude --resume ${id}${yolo}`;
+      return `claude --resume ${id}${yolo} || ${claudeFresh}`;
     case "codex":
-      return `codex resume --last${yolo}`;
+      return `codex resume --last${yolo} || ${codexFresh}`;
     case "opencode":
-      return `opencode --continue${yolo}`;
+      return `opencode --continue${yolo} || ${opencodeFresh}`;
     default:
       return null;
   }
