@@ -15,10 +15,36 @@ pub fn build_command(req: &SpawnRequest) -> CommandBuilder {
         .or_else(home_dir)
         .unwrap_or_else(|| ".".to_string());
     cmd.cwd(cwd);
+    sanitize_env(&mut cmd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.env("PERENE", "2");
     cmd
+}
+
+/// Remove variáveis de ambiente de *sessão de harness* herdadas.
+///
+/// Se o Perene for aberto de dentro de uma sessão do Claude Code (ou de outro
+/// harness), o processo herda marcadores como `CLAUDE_CODE_CHILD_SESSION` e
+/// `CLAUDE_CODE_SESSION_ID`. Herdados pelo `claude` que abrimos no PTY, eles
+/// **desligam o salvamento do transcript** ("Transcript saving is off") e a
+/// conversa nunca é gravada em disco — então o `--resume` depois falha com
+/// "No conversation found with session ID". Os terminais precisam nascer limpos.
+fn sanitize_env(cmd: &mut CommandBuilder) {
+    const EXACT: &[&str] = &[
+        "CLAUDECODE",
+        "CLAUDE_PID",
+        "CLAUDE_EFFORT",
+        "CODEX_SANDBOX",
+        "CODEX_SESSION_ID",
+        "OPENCODE_SESSION_ID",
+    ];
+    for (key, _) in std::env::vars() {
+        let up = key.to_ascii_uppercase();
+        if up.starts_with("CLAUDE_CODE_") || EXACT.contains(&up.as_str()) {
+            cmd.env_remove(&key);
+        }
+    }
 }
 
 #[cfg(not(windows))]

@@ -221,6 +221,60 @@ fn spawn_attach_reattach_preserves_scrollback_and_process() {
     assert!(saw_pane, "ListPanes devia reportar o pane vivo");
 }
 
+/// Regressão: se o Perene for aberto de dentro de uma sessão do Claude Code, os
+/// marcadores herdados (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`…)
+/// desligam o salvamento do transcript do `claude` que roda no PTY — e aí o
+/// `--resume` falha depois com "No conversation found". Os terminais têm que
+/// nascer com o ambiente limpo.
+#[test]
+fn spawned_terminals_do_not_inherit_harness_session_env() {
+    std::env::set_var("SHELL", "/bin/sh");
+    std::env::set_var("CLAUDE_CODE_CHILD_SESSION", "1");
+    std::env::set_var("CLAUDE_CODE_SESSION_ID", "deadbeef");
+    std::env::set_var("CLAUDECODE", "1");
+
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("daemon.sock");
+    let config = perene_daemon::Config {
+        socket_path: socket.clone(),
+        lock_path: dir.path().join("daemon.lock"),
+        scrollback_dir: dir.path().join("scrollback"),
+        scrollback_cap: 1024 * 1024,
+    };
+    std::thread::spawn(move || {
+        let _ = perene_daemon::run(config);
+    });
+    wait_for_socket(&socket, Duration::from_secs(5));
+
+    let mut c = LineClient::connect(&socket).unwrap();
+    c.send(&ClientMessage::Hello {
+        protocol_version: perene_daemon::PROTOCOL_VERSION,
+    });
+    let _ = c.next_msg(Instant::now() + Duration::from_secs(2));
+
+    let pane_id = "pane_env".to_string();
+    c.send(&ClientMessage::Spawn(SpawnRequest {
+        pane_id: pane_id.clone(),
+        cols: 80,
+        rows: 24,
+        cwd: Some(dir.path().to_string_lossy().to_string()),
+        // Imprime as vars: têm que sair VAZIAS dentro do PTY.
+        command: Some(
+            "printf 'ENVCHECK=[%s][%s][%s]\\n' \"$CLAUDE_CODE_CHILD_SESSION\" \"$CLAUDE_CODE_SESSION_ID\" \"$CLAUDECODE\""
+                .to_string(),
+        ),
+        shell: None,
+    }));
+    c.send(&ClientMessage::Attach {
+        pane_id: pane_id.clone(),
+    });
+
+    assert!(
+        c.wait_for_output("ENVCHECK=[][][]", Duration::from_secs(10)),
+        "o terminal herdou vars de sessão do harness (transcript saving quebraria)"
+    );
+}
+
 #[test]
 fn single_instance_lock_blocks_second_daemon() {
     let dir = tempfile::tempdir().unwrap();
