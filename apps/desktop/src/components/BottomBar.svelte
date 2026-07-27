@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte";
   import {
     SquareSplitHorizontal,
     SquareSplitVertical,
@@ -26,7 +27,7 @@
   <!-- Novo terminal por perfil -->
   <div class="group profiles">
     {#each PROFILES as p (p.id)}
-      <button class="prof" style="--c:{p.color}" title={"Nova sessão " + p.label} onclick={() => app.startNewSession(p.id)}>
+      <button class="prof" style="--c:{p.color}" title={t("bottom.newSession", { tool: p.label })} onclick={() => app.startNewSession(p.id)}>
         <ToolIcon id={p.id} size={17} />
       </button>
     {/each}
@@ -53,20 +54,20 @@
   <div class="spacer"></div>
 
   <div class="group">
-    <button title="Dividir à direita (⌘D)" onclick={() => split("horizontal")}><SquareSplitHorizontal size={16} /></button>
-    <button title="Dividir abaixo (⌘⇧D)" onclick={() => split("vertical")}><SquareSplitVertical size={16} /></button>
-    <button title="Colunas" onclick={() => app.arrange("columns")}><Columns3 size={16} /></button>
-    <button title="Linhas" onclick={() => app.arrange("rows")}><Rows3 size={16} /></button>
-    <button title="Grade" onclick={() => app.arrange("grid")}><LayoutGrid size={16} /></button>
+    <button title={t("bottom.splitRight") + " (⌘D)"} onclick={() => split("horizontal")}><SquareSplitHorizontal size={16} /></button>
+    <button title={t("bottom.splitDown") + " (⌘⇧D)"} onclick={() => split("vertical")}><SquareSplitVertical size={16} /></button>
+    <button title={t("bottom.columns")} onclick={() => app.arrange("columns")}><Columns3 size={16} /></button>
+    <button title={t("bottom.rows")} onclick={() => app.arrange("rows")}><Rows3 size={16} /></button>
+    <button title={t("bottom.grid")} onclick={() => app.arrange("grid")}><LayoutGrid size={16} /></button>
   </div>
 
   <div class="sep"></div>
 
   <div class="group">
-    <button title="Editor de arquivos" onclick={() => app.openFilesTab()}><Code2 size={16} /></button>
-    <button title="Histórico de sessões (⌘Y)" onclick={() => (app.historyOpen = true)}><History size={16} /></button>
-    <button title="Uso de tokens (⌘U)" onclick={() => (app.usageOpen = true)}><ChartColumn size={16} /></button>
-    <button title="Configurações (⌘,)" onclick={() => (app.settingsOpen = true)}><Settings size={16} /></button>
+    <button title={t("bottom.fileEditor")} onclick={() => app.openFilesTab()}><Code2 size={16} /></button>
+    <button title={t("bottom.history") + " (⌘Y)"} onclick={() => (app.historyOpen = true)}><History size={16} /></button>
+    <button title={t("bottom.usage") + " (⌘U)"} onclick={() => (app.usageOpen = true)}><ChartColumn size={16} /></button>
+    <button title={t("bottom.settings") + " (⌘,)"} onclick={() => (app.settingsOpen = true)}><Settings size={16} /></button>
   </div>
 </div>
 

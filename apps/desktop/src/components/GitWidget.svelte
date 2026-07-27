@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte";
   import { onMount } from "svelte";
   import {
     GitBranch,
@@ -71,7 +72,7 @@
     const b = newBranch.trim();
     if (!b) return;
     newBranch = "";
-    await act((r) => api.gitCreateBranch(r, b), "criado " + b);
+    await act((r) => api.gitCreateBranch(r, b), t("git.branchCreated", { branch: b }));
   }
 
   function flash(t: string) {
@@ -95,10 +96,10 @@
 
 {#if gs?.isRepo}
   <div class="gitw">
-    <button class="branch" onclick={toggleMenu} title={"Branch: " + gs.branch}>
+    <button class="branch" onclick={toggleMenu} title={t("git.branch", { branch: gs.branch })}>
       <GitBranch size={13} />
       <span class="bn">{gs.branch}</span>
-      {#if gs.dirty}<span class="dot" title="mudanças não commitadas"></span>{/if}
+      {#if gs.dirty}<span class="dot" title={t("git.dirty")}></span>{/if}
       {#if gs.ahead}<span class="ab">↑{gs.ahead}</span>{/if}
       {#if gs.behind}<span class="ab">↓{gs.behind}</span>{/if}
     </button>
@@ -108,34 +109,34 @@
       <div class="backdrop" onclick={() => (menu = false)}></div>
       <div class="menu">
         <button class="row" onclick={() => (showBranches = !showBranches)}>
-          <span class="l"><GitBranch size={13} /> Trocar de branch</span>
+          <span class="l"><GitBranch size={13} /> {t("git.switchBranch")}</span>
           <ChevronRight size={14} style="transform: rotate({showBranches ? 90 : 0}deg)" />
         </button>
         {#if showBranches}
           <div class="blist">
             {#each branches as b (b)}
-              <button class="bitem" onclick={() => act((r) => api.gitCheckout(r, b), "→ " + b)}>
+              <button class="bitem" onclick={() => act((r) => api.gitCheckout(r, b), t("git.switchedTo", { branch: b }))}>
                 {#if b === gs.branch}<Check size={13} />{:else}<span class="sp"></span>{/if}
                 {b}
               </button>
             {:else}
-              <div class="mempty">sem branches</div>
+              <div class="mempty">{t("git.noBranches")}</div>
             {/each}
           </div>
         {/if}
         <div class="newb">
-          <input placeholder="Novo branch…" bind:value={newBranch} onkeydown={(e) => e.key === "Enter" && createBranch()} />
-          <button class="plus" title="Criar branch" onclick={createBranch}><Plus size={14} /></button>
+          <input placeholder={t("git.newBranch")} bind:value={newBranch} onkeydown={(e) => e.key === "Enter" && createBranch()} />
+          <button class="plus" title={t("git.createBranch")} onclick={createBranch}><Plus size={14} /></button>
         </div>
 
         <div class="sep"></div>
-        <button onclick={() => act((r) => api.gitFetch(r), "fetch ok")}><RefreshCw size={13} /> Fetch</button>
-        <button onclick={() => act((r) => api.gitPull(r), "pull ok")}><ArrowDownToLine size={13} /> Pull (fast-forward)</button>
-        <button onclick={() => act((r) => api.gitPush(r), "push ok")}><ArrowUpToLine size={13} /> Push</button>
+        <button onclick={() => act((r) => api.gitFetch(r), t("git.fetchOk"))}><RefreshCw size={13} /> {t("git.fetch")}</button>
+        <button onclick={() => act((r) => api.gitPull(r), t("git.pullOk"))}><ArrowDownToLine size={13} /> {t("git.pull")}</button>
+        <button onclick={() => act((r) => api.gitPush(r), t("git.pushOk"))}><ArrowUpToLine size={13} /> {t("git.push")}</button>
 
         <div class="sep"></div>
-        <button onclick={() => act((r) => api.gitOpenPr(r), "PR aberto")}><GitPullRequestArrow size={13} /> Pull Requests…</button>
-        <button onclick={() => { app.openFilesTab(); menu = false; }}><FolderTree size={13} /> Abrir editor</button>
+        <button onclick={() => act((r) => api.gitOpenPr(r), t("git.prOpened"))}><GitPullRequestArrow size={13} /> {t("git.pullRequests")}</button>
+        <button onclick={() => { app.openFilesTab(); menu = false; }}><FolderTree size={13} /> {t("git.openEditor")}</button>
       </div>
     {/if}
   </div>

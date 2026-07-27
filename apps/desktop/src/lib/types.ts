@@ -69,6 +69,7 @@ export interface Settings {
   askWorktree: boolean;
   sidebarWidth: number;
   editorPanelWidth: number;
+  locale: string; // "" = seguir o sistema
 }
 
 export interface ShellOption {

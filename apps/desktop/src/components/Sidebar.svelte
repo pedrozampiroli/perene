@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte";
   import { Plus, FolderPlus, ChevronRight, ChevronDown, X, Folder, FolderOpen, FolderCog } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
@@ -8,7 +9,7 @@
   const ws = $derived(app.activeWorkspace);
 
   function shortPath(p?: string | null): string {
-    if (!p) return "(sem pasta)";
+    if (!p) return t("sidebar.noDirectory");
     const parts = p.split("/").filter(Boolean);
     return parts.length <= 2 ? "/" + parts.join("/") : "…/" + parts.slice(-2).join("/");
   }
@@ -52,8 +53,8 @@
 
 <div class="sidebar">
   <div class="section-head">
-    <span>Workspaces</span>
-    <button class="add" title="Novo workspace" onclick={() => app.openNewWorkspaceModal()}><Plus size={15} /></button>
+    <span>{t("sidebar.workspaces")}</span>
+    <button class="add" title={t("sidebar.newWorkspace")} onclick={() => app.openNewWorkspaceModal()}><Plus size={15} /></button>
   </div>
   <div class="workspaces">
     {#each app.manifest.workspaces as w (w.id)}
@@ -68,12 +69,12 @@
       >
         <span class="name">{w.name}</span>
         {#if app.manifest.workspaces.length > 1}
-          <button class="mini" title="Remover workspace" onclick={(e) => { e.stopPropagation(); app.confirmDeleteWorkspace(w.id); }}><X size={13} /></button>
+          <button class="mini" title={t("sidebar.removeWorkspace")} onclick={(e) => { e.stopPropagation(); app.confirmDeleteWorkspace(w.id); }}><X size={13} /></button>
         {/if}
       </div>
     {/each}
     {#if ws}
-      <button class="dirline" title="Trocar a pasta do workspace" onclick={() => app.changeWorkspaceDirectory(ws.id)}>
+      <button class="dirline" title={t("sidebar.changeWorkspaceDirectory")} onclick={() => app.changeWorkspaceDirectory(ws.id)}>
         <FolderCog size={13} />
         <span>{shortPath(ws.directory)}</span>
       </button>
@@ -81,8 +82,8 @@
   </div>
 
   <div class="section-head">
-    <span>Abas</span>
-    <button class="add" title="Nova pasta" onclick={() => app.openNewFolderModal()}><FolderPlus size={15} /></button>
+    <span>{t("sidebar.tabs")}</span>
+    <button class="add" title={t("sidebar.newFolder")} onclick={() => app.openNewFolderModal()}><FolderPlus size={15} /></button>
   </div>
 
   <div
@@ -119,14 +120,14 @@
             {#if folder.collapsed}<Folder size={14} class="ficon" />{:else}<FolderOpen size={14} class="ficon" />{/if}
             <span class="fname">{folder.name}</span>
             <span class="fcount">{app.tabsInFolder(ws, folder.id).length}</span>
-            <button class="mini" title="Definir diretório da pasta" onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
-            <button class="mini" title="Remover pasta" onclick={(e) => { e.stopPropagation(); app.confirmDeleteFolder(folder.id); }}><X size={12} /></button>
+            <button class="mini" title={t("sidebar.setFolderDirectory")} onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
+            <button class="mini" title={t("sidebar.removeFolder")} onclick={(e) => { e.stopPropagation(); app.confirmDeleteFolder(folder.id); }}><X size={12} /></button>
           </div>
           {#if !folder.collapsed}
             {#each app.tabsInFolder(ws, folder.id) as tab (tab.id)}
               {@render tabRow(tab)}
             {:else}
-              <div class="fempty">arraste uma aba aqui</div>
+              <div class="fempty">{t("sidebar.dropHint")}</div>
             {/each}
           {/if}
         </div>
@@ -158,7 +159,7 @@
   >
     <span class="ticon" style="color:{prof.color}"><ToolIcon id={tab.panes[0]?.toolProfileId ?? "shell"} size={14} /></span>
     <span class="ttitle">{tab.title}</span>
-    <button class="mini" title="Fechar aba" onclick={(e) => { e.stopPropagation(); app.confirmCloseTab(tab.id); }}><X size={12} /></button>
+    <button class="mini" title={t("sidebar.closeTab")} onclick={(e) => { e.stopPropagation(); app.confirmCloseTab(tab.id); }}><X size={12} /></button>
   </div>
 {/snippet}
 

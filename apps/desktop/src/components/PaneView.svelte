@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte";
   import { onMount, onDestroy } from "svelte";
   import { X, Code2 } from "@lucide/svelte";
   import { PerenePane } from "../lib/terminal";
@@ -49,9 +50,9 @@
     <span class="hicon" style="color:{isFiles ? '#6ea8fe' : prof.color}">
       {#if isFiles}<Code2 size={13} />{:else}<ToolIcon id={data?.toolProfileId ?? "shell"} size={13} />{/if}
     </span>
-    <span class="label">{isFiles ? "Editor" : prof.label}</span>
+    <span class="label">{isFiles ? t("pane.editor") : prof.label}</span>
     <span class="dir">{dirLabel}</span>
-    <button class="x" title="Fechar painel (⌘W)" onclick={() => app.confirmClosePane(paneId)}><X size={13} /></button>
+    <button class="x" title={t("pane.close") + " (⌘W)"} onclick={() => app.confirmClosePane(paneId)}><X size={13} /></button>
   </div>
   {#if isFiles}
     <div class="term"><FilesPane {paneId} /></div>

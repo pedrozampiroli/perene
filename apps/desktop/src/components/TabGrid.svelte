@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte";
   import SplitContainer from "./SplitContainer.svelte";
   import { app } from "../lib/store.svelte";
 
@@ -15,8 +16,8 @@
   {/key}
 {:else}
   <div class="empty">
-    <p>Nenhuma aba aberta.</p>
-    <button onclick={() => app.startNewSession("shell")}>+ Nova sessão</button>
+    <p>{t("tabgrid.empty")}</p>
+    <button onclick={() => app.startNewSession("shell")}>{t("tabgrid.newSession")}</button>
   </div>
 {/if}
 

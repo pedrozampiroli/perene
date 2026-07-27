@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte";
   import { onMount, onDestroy } from "svelte";
   import {
     GitBranch,
@@ -70,7 +71,7 @@
     selected = c.short;
     mode = "diff";
     diffMode = "unified"; // um commit toca vários arquivos → diff unificado
-    diffText = "carregando…";
+    diffText = t("editor.loading");
     diffText = await api.gitShow(gs.root, c.hash).catch((e) => "erro: " + e);
   }
 
@@ -80,7 +81,7 @@
     try {
       await api.gitCommit(gs.root, m);
       commitMsg = "";
-      flash("commit feito");
+      flash(t("editor.commitDone"));
       await loadStatus();
       commits = await api.gitLog(gs.root, 60).catch(() => []);
     } catch (e) {
@@ -90,10 +91,10 @@
 
   async function doPush() {
     if (!gs?.root) return;
-    flash("push…");
+    flash(t("git.push") + "…");
     try {
       await api.gitPush(gs.root);
-      flash("push ok");
+      flash(t("git.pushOk"));
       await loadStatus();
     } catch (e) {
       flash(String(e));
@@ -106,7 +107,7 @@
     if (!p || !b || !gs?.root) return;
     try {
       await api.gitWorktreeAdd(gs.root, p, b, wtCreate);
-      flash("worktree criado");
+      flash(t("editor.worktreeCreated"));
       wtPath = "";
       wtBranch = "";
       worktrees = await api.gitWorktreeList(gs.root).catch(() => []);
@@ -245,10 +246,10 @@
       await api.fsWriteFile(path, content);
       const f = openFiles.find((f) => f.path === path);
       if (f) f.dirty = false;
-      flash("Salvo");
+      flash(t("editor.saved"));
       await loadStatus();
     } catch (e) {
-      flash("Erro ao salvar: " + e);
+      flash(t("editor.saveError", { error: String(e) }));
     }
   }
 
@@ -288,7 +289,7 @@
 
   async function checkout(branch: string) {
     branchMenu = false;
-    await withRoot((r) => api.gitCheckout(r, branch), `→ ${branch}`);
+    await withRoot((r) => api.gitCheckout(r, branch), t("git.switchedTo", { branch }));
     await loadRoot();
   }
   async function createBranch() {
@@ -296,7 +297,7 @@
     if (!name) return;
     newBranch = "";
     branchMenu = false;
-    await withRoot((r) => api.gitCreateBranch(r, name), `criado ${name}`);
+    await withRoot((r) => api.gitCreateBranch(r, name), t("git.branchCreated", { branch: name }));
   }
 
   let branches = $state<string[]>([]);
@@ -333,7 +334,7 @@
         {#if branchMenu}
           <div class="menu">
             <div class="new">
-              <input placeholder="novo branch…" bind:value={newBranch} onkeydown={(e) => e.key === "Enter" && createBranch()} />
+              <input placeholder={t("git.newBranch")} bind:value={newBranch} onkeydown={(e) => e.key === "Enter" && createBranch()} />
               <button onclick={createBranch}>+</button>
             </div>
             {#each branches as b (b)}
@@ -343,22 +344,22 @@
         {/if}
       </div>
       <div class="spacer"></div>
-      <button onclick={() => withRoot((r) => api.gitFetch(r), "fetch ok")} title="Fetch"><RefreshCw size={13} /> fetch</button>
-      <button onclick={() => withRoot((r) => api.gitPull(r), "pull ok")} title="Pull"><ArrowDownToLine size={13} /> pull</button>
-      <button onclick={() => gs?.root && api.gitOpenPr(gs.root).catch((e) => flash(String(e)))} title="Abrir PR no browser"><GitPullRequestArrow size={13} /> PR</button>
+      <button onclick={() => withRoot((r) => api.gitFetch(r), t("git.fetchOk"))} title={t("git.fetch")}><RefreshCw size={13} /> {t("git.fetch")}</button>
+      <button onclick={() => withRoot((r) => api.gitPull(r), t("git.pullOk"))} title={t("git.pull")}><ArrowDownToLine size={13} /> {t("git.pull")}</button>
+      <button onclick={() => gs?.root && api.gitOpenPr(gs.root).catch((e) => flash(String(e)))} title={t("git.pullRequests")}><GitPullRequestArrow size={13} /> PR</button>
     {:else}
-      <span class="norepo">Sem repositório git em {root}</span>
+      <span class="norepo">{t("git.noRepo", { path: root })}</span>
     {/if}
   </div>
 
   <div class="tabs">
-    <button class:active={tab === "files"} onclick={() => switchTab("files")}>Arquivos</button>
+    <button class:active={tab === "files"} onclick={() => switchTab("files")}>{t("editor.files")}</button>
     <button class:active={tab === "changes"} onclick={() => switchTab("changes")}>
-      Mudanças{#if gs && gs.files.length}<span class="count">{gs.files.length}</span>{/if}
+      {t("editor.changes")}{#if gs && gs.files.length}<span class="count">{gs.files.length}</span>{/if}
     </button>
     {#if gs?.isRepo}
-      <button class:active={tab === "commits"} onclick={() => switchTab("commits")}>Commits</button>
-      <button class:active={tab === "worktrees"} onclick={() => switchTab("worktrees")}>Worktrees</button>
+      <button class:active={tab === "commits"} onclick={() => switchTab("commits")}>{t("editor.commits")}</button>
+      <button class:active={tab === "worktrees"} onclick={() => switchTab("worktrees")}>{t("editor.worktrees")}</button>
     {/if}
   </div>
 
@@ -371,13 +372,13 @@
       {:else if tab === "changes"}
         {#if gs?.isRepo}
           <div class="commitbox">
-            <input placeholder="mensagem do commit…" bind:value={commitMsg} onkeydown={(e) => e.key === "Enter" && doCommit()} />
+            <input placeholder={t("editor.commitPlaceholder")} bind:value={commitMsg} onkeydown={(e) => e.key === "Enter" && doCommit()} />
             <div class="cbtns">
               <button class="commit-btn" title="git add -A && git commit" disabled={!commitMsg.trim() || !gs.files.length} onclick={doCommit}>
-                <GitCommitHorizontal size={14} /> Commit{#if gs.files.length} ({gs.files.length}){/if}
+                <GitCommitHorizontal size={14} /> {t("editor.commit")}{#if gs.files.length} ({gs.files.length}){/if}
               </button>
               <button class="push-btn" title="git push" onclick={doPush}>
-                <ArrowUpToLine size={14} /> Push{#if gs.ahead} (↑{gs.ahead}){/if}
+                <ArrowUpToLine size={14} /> {t("git.push")}{#if gs.ahead} (↑{gs.ahead}){/if}
               </button>
             </div>
           </div>
@@ -390,7 +391,7 @@
             </div>
           {/each}
         {:else}
-          <div class="empty">Nenhuma mudança.</div>
+          <div class="empty">{t("editor.noChanges")}</div>
         {/if}
       {:else if tab === "commits"}
         {#each commits as c (c.hash)}
@@ -399,15 +400,15 @@
             <div class="cmeta">{c.short} · {c.author} · {c.date}</div>
           </div>
         {:else}
-          <div class="empty">Sem commits.</div>
+          <div class="empty">{t("editor.noCommits")}</div>
         {/each}
       {:else if tab === "worktrees"}
         <div class="wtform">
-          <input placeholder="caminho do worktree…" bind:value={wtPath} />
-          <input placeholder="branch" bind:value={wtBranch} />
-          <label class="wtchk"><input type="checkbox" bind:checked={wtCreate} /> criar branch novo</label>
+          <input placeholder={t("editor.worktreePath")} bind:value={wtPath} />
+          <input placeholder={t("editor.worktreeBranch")} bind:value={wtBranch} />
+          <label class="wtchk"><input type="checkbox" bind:checked={wtCreate} /> {t("editor.worktreeNewBranch")}</label>
           <button disabled={!wtPath.trim() || !wtBranch.trim()} onclick={createWorktree}>
-            <FolderGit2 size={14} /> Criar worktree
+            <FolderGit2 size={14} /> {t("editor.createWorktree")}
           </button>
         </div>
         {#each worktrees as w (w.path)}
@@ -415,16 +416,16 @@
             <div class="wtbranch">{w.branch || "(detached)"} <span class="wthead">{w.head}</span></div>
             <div class="wtpath">{w.path}</div>
             <div class="wtacts">
-              <button title="Abrir o editor nesta worktree" onclick={() => app.openFilesTab(w.path)}>
-                <Code2 size={12} /> Editor
+              <button title={t("editor.openEditorHere")} onclick={() => app.openFilesTab(w.path)}>
+                <Code2 size={12} /> {t("pane.editor")}
               </button>
-              <button title="Abrir uma sessão nesta worktree" onclick={() => app.createTabInDir("claude", w.path, `⑂ ${w.branch || "wt"}`)}>
-                <Terminal size={12} /> Sessão
+              <button title={t("editor.openSessionHere")} onclick={() => app.createTabInDir("claude", w.path, `⑂ ${w.branch || "wt"}`)}>
+                <Terminal size={12} /> {t("editor.session")}
               </button>
             </div>
           </div>
         {:else}
-          <div class="empty">Nenhum worktree.</div>
+          <div class="empty">{t("editor.noWorktrees")}</div>
         {/each}
       {/if}
     </div>
@@ -446,8 +447,8 @@
               title={f.path}
             >
               <span class="en">{f.name}</span>
-              {#if f.dirty}<span class="edot" title="não salvo"></span>{/if}
-              <button class="ex" title="Fechar aba" onclick={(e) => { e.stopPropagation(); closeFile(f.path); }}><X size={12} /></button>
+              {#if f.dirty}<span class="edot" title={t("editor.unsaved")}></span>{/if}
+              <button class="ex" title={t("editor.closeFile")} onclick={(e) => { e.stopPropagation(); closeFile(f.path); }}><X size={12} /></button>
             </div>
           {/each}
         </div>
@@ -457,12 +458,12 @@
       <div class="editor" bind:this={editorHost} style:display={mode === "edit" && openFiles.length ? "block" : "none"}></div>
 
       {#if mode === "edit" && openFiles.length === 0}
-        <div class="empty center">Selecione um arquivo na árvore.</div>
+        <div class="empty center">{t("editor.selectFile")}</div>
       {:else if mode === "diff"}
         <div class="editor-head">
-          {rel(selected ?? "")} — diff
+          {rel(selected ?? "")} — {t("editor.diff")}
           <span class="diff-legend">
-            {#if diffMode === "split"}<span class="lg old">antes (HEAD)</span><span class="lg new">agora</span>{/if}
+            {#if diffMode === "split"}<span class="lg old">{t("editor.diffBefore")}</span><span class="lg new">{t("editor.diffAfter")}</span>{/if}
           </span>
         </div>
         {#if diffMode === "split"}
@@ -485,7 +486,7 @@
   </div>
 
   {#if msg}
-    <button class="toast" onclick={() => (msg = "")} title="Dispensar">{msg}</button>
+    <button class="toast" onclick={() => (msg = "")} title={t("editor.dismiss")}>{msg}</button>
   {/if}
 </div>
 
@@ -643,24 +644,42 @@
     border-bottom: 1px solid #2a2a2a;
   }
   .tabs button {
+    /* Larguras IGUAIS: trocar de aba não muda mais o layout. */
+    flex: 1 1 0;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
     background: none;
     border: none;
     color: #9aa0a6;
-    padding: 0 14px;
+    padding: 0 8px;
     cursor: pointer;
     font-size: 12px;
     border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .tabs button.active {
     color: #fff;
     border-bottom-color: #007acc;
   }
   .count {
-    margin-left: 5px;
     background: #37373d;
     border-radius: 8px;
     padding: 0 6px;
     font-size: 10px;
+    flex: 0 0 auto;
+  }
+  /* Cabeçalho do editor com altura fixa (não "pula" entre editar e diff). */
+  .editor-head {
+    flex: 0 0 22px;
+  }
+  /* Painéis das abas: mesma caixa, rolagem própria — sem salto de tamanho. */
+  .sidepanel > :global(*) {
+    max-width: 100%;
   }
   .body {
     flex: 1 1 auto;

@@ -39,7 +39,11 @@ colidir com `~/.perene/` da v1.
 
 - **Git:** nunca usar worktrees; um branch novo por tarefa. Não commitar sem
   pedido explícito.
-- **Idioma:** UI e docs em pt-BR; código e identificadores em inglês.
+- **Idioma:** **UI em inglês por padrão, com i18n** — nenhuma string solta nos
+  componentes: use `t("chave")` de `src/lib/i18n.svelte.ts` e adicione a chave em
+  `src/i18n/en.json` (fonte da verdade) + nas traduções. Idioma novo = duplicar
+  `en.json` como `<código>.json` (detectado sozinho). Docs e comentários seguem
+  em pt-BR; código e identificadores em inglês.
 - **RAM:** alvo < 150 MB com 5 terminais. Medir a cada milestone.
 - **Comandos:**
   - `cargo build` / `cargo test` na raiz (workspace).

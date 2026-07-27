@@ -29,6 +29,9 @@ pub struct Settings {
     /// Largura do painel lateral do editor (árvore/mudanças) em px.
     #[serde(default = "default_editor_panel_width")]
     pub editor_panel_width: u32,
+    /// Idioma da interface (ex.: `en`, `pt-BR`). Vazio = seguir o sistema.
+    #[serde(default)]
+    pub locale: String,
 }
 
 fn default_true() -> bool {
@@ -51,6 +54,7 @@ impl Default for Settings {
             ask_worktree: true,
             sidebar_width: default_sidebar_width(),
             editor_panel_width: default_editor_panel_width(),
+            locale: String::new(),
         }
     }
 }
@@ -102,6 +106,7 @@ mod tests {
             ask_worktree: false,
             sidebar_width: 300,
             editor_panel_width: 280,
+            locale: "pt-BR".into(),
         };
         store.save(&s).unwrap();
         assert_eq!(store.load().unwrap(), s);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte";
   import { TriangleAlert } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
 
@@ -20,7 +21,7 @@
       </div>
       <p>{c.message}</p>
       <div class="actions">
-        <button class="cancel" onclick={() => (app.confirm = null)}>Cancelar</button>
+        <button class="cancel" onclick={() => (app.confirm = null)}>{t("confirm.cancel")}</button>
         <button class="ok" class:danger={c.danger} onclick={() => app.runConfirm()}>{c.confirmLabel}</button>
       </div>
     </div>

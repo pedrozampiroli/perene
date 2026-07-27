@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte";
   import { FolderOpen } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
 
@@ -19,26 +20,26 @@
       <h3>{m.title}</h3>
 
       <label class="field">
-        <span>Nome</span>
+        <span>{t("name.nameLabel")}</span>
         <!-- svelte-ignore a11y_autofocus -->
-        <input bind:value={m.name} onkeydown={onKey} autofocus placeholder="nome…" />
+        <input bind:value={m.name} onkeydown={onKey} autofocus placeholder={t("name.namePlaceholder")} />
       </label>
 
       {#if m.showDirectory}
         <label class="field">
-          <span>Pasta do projeto</span>
+          <span>{t("name.projectFolder")}</span>
           <div class="dir">
-            <input bind:value={m.directory} onkeydown={onKey} placeholder="/caminho/do/projeto" />
+            <input bind:value={m.directory} onkeydown={onKey} placeholder={t("name.pathPlaceholder")} />
             <button type="button" class="pick" onclick={() => app.pickModalDirectory()}>
-              <FolderOpen size={15} /> Escolher…
+              <FolderOpen size={15} /> {t("name.choose")}
             </button>
           </div>
         </label>
       {/if}
 
       <div class="actions">
-        <button class="cancel" onclick={() => (app.nameModal = null)}>Cancelar</button>
-        <button class="ok" onclick={() => app.confirmNameModal()}>Confirmar</button>
+        <button class="cancel" onclick={() => (app.nameModal = null)}>{t("confirm.cancel")}</button>
+        <button class="ok" onclick={() => app.confirmNameModal()}>{t("confirm.confirm")}</button>
       </div>
     </div>
   </div>

@@ -6,6 +6,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "./api";
+import { i18n, detectLocale, t } from "./i18n.svelte";
 import { buildCommand, needsSessionId } from "./profiles";
 import type {
   LayoutNode,
@@ -152,6 +153,7 @@ class AppStore {
     askWorktree: true,
     sidebarWidth: 240,
     editorPanelWidth: 240,
+    locale: "",
   });
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
@@ -174,8 +176,16 @@ class AppStore {
     const [m, s] = await Promise.all([api.manifestLoad(), api.settingsLoad()]);
     this.manifest = m;
     this.settings = s;
+    // Idioma: preferência salva ou, se vazia, o do sistema.
+    i18n.setLocale(s.locale || detectLocale());
     this.syncActivePane();
     this.loaded = true;
+  }
+
+  setLocale(code: string): void {
+    this.settings.locale = code;
+    i18n.setLocale(code || detectLocale());
+    this.saveSettings();
   }
 
   // ── Seleção ────────────────────────────────────────────────────────────
@@ -271,7 +281,7 @@ class AppStore {
   openNewWorkspaceModal(): void {
     this.nameModal = {
       kind: "newWorkspace",
-      title: "Novo workspace",
+      title: t("name.newWorkspace"),
       name: "",
       directory: this.home,
       showDirectory: true,
@@ -280,14 +290,15 @@ class AppStore {
   openNewFolderModal(): void {
     this.nameModal = {
       kind: "newFolder",
-      title: "Nova pasta",
+      title: t("name.newFolder"),
       name: "",
       directory: null,
       showDirectory: false,
     };
   }
   openRenameModal(type: "ws" | "folder" | "tab", id: string, current: string): void {
-    const title = type === "ws" ? "Renomear workspace" : type === "folder" ? "Renomear pasta" : "Renomear aba";
+    const title =
+      type === "ws" ? t("name.renameWorkspace") : type === "folder" ? t("name.renameFolder") : t("name.renameTab");
     this.nameModal = { kind: "rename", target: { type, id }, title, name: current, directory: null, showDirectory: false };
   }
   async pickModalDirectory(): Promise<void> {
@@ -306,7 +317,7 @@ class AppStore {
     if (m.kind === "newWorkspace") {
       if (name && m.directory) this.createWorkspaceNamed(name, m.directory);
     } else if (m.kind === "newFolder") {
-      this.createFolder(name || "Nova pasta");
+      this.createFolder(name || t("name.newFolder"));
     } else if (m.kind === "rename" && m.target) {
       if (name) {
         if (m.target.type === "ws") this.renameWorkspace(m.target.id, name);
@@ -328,14 +339,14 @@ class AppStore {
   workspaceMenu(id: string): MenuItem[] {
     const ws = this.manifest.workspaces.find((w) => w.id === id);
     return [
-      { label: "Nova sessão…", action: () => { this.selectWorkspace(id); void this.startNewSession("shell"); } },
-      { label: "Nova pasta…", action: () => { this.selectWorkspace(id); this.openNewFolderModal(); } },
+      { label: t("menu.newSession"), action: () => { this.selectWorkspace(id); void this.startNewSession("shell"); } },
+      { label: t("menu.newFolder"), action: () => { this.selectWorkspace(id); this.openNewFolderModal(); } },
       { separator: true },
-      { label: "Renomear…", action: () => this.openRenameModal("ws", id, ws?.name ?? "") },
-      { label: "Definir diretório…", action: () => void this.changeWorkspaceDirectory(id) },
+      { label: t("menu.rename"), action: () => this.openRenameModal("ws", id, ws?.name ?? "") },
+      { label: t("menu.setDirectory"), action: () => void this.changeWorkspaceDirectory(id) },
       { separator: true },
       {
-        label: "Excluir workspace",
+        label: t("menu.deleteWorkspace"),
         danger: true,
         disabled: this.manifest.workspaces.length <= 1,
         action: () => this.confirmDeleteWorkspace(id),
@@ -347,13 +358,13 @@ class AppStore {
   folderMenu(id: string): MenuItem[] {
     const f = this.activeWorkspace?.folders.find((f) => f.id === id);
     return [
-      { label: "Nova sessão nesta pasta…", action: () => void this.startNewSessionInFolder(id) },
+      { label: t("menu.newSessionInFolder"), action: () => void this.startNewSessionInFolder(id) },
       { separator: true },
-      { label: "Renomear…", action: () => this.openRenameModal("folder", id, f?.name ?? "") },
-      { label: "Definir diretório…", action: () => void this.changeFolderDirectory(id) },
-      { label: f?.collapsed ? "Expandir" : "Recolher", action: () => this.toggleFolder(id) },
+      { label: t("menu.rename"), action: () => this.openRenameModal("folder", id, f?.name ?? "") },
+      { label: t("menu.setDirectory"), action: () => void this.changeFolderDirectory(id) },
+      { label: f?.collapsed ? t("menu.expand") : t("menu.collapse"), action: () => this.toggleFolder(id) },
       { separator: true },
-      { label: "Excluir pasta", danger: true, action: () => this.confirmDeleteFolder(id) },
+      { label: t("menu.deleteFolder"), danger: true, action: () => this.confirmDeleteFolder(id) },
     ];
   }
 
@@ -363,22 +374,20 @@ class AppStore {
     const tab = ws?.tabs.find((t) => t.id === id);
     const folders = ws?.folders ?? [];
     const moves: MenuItem[] = folders.map((f) => ({
-      label: `→ ${f.name}`,
+      label: t("menu.moveTo", { folder: f.name }),
       disabled: tab?.folderId === f.id,
       action: () => this.moveTab(id, f.id),
     }));
     const cwd = tab?.panes[0]?.workingDirectory;
     return [
-      { label: "Abrir", action: () => this.selectTab(id) },
-      { label: "Renomear…", action: () => this.openRenameModal("tab", id, tab?.title ?? "") },
-      ...(cwd
-        ? [{ label: "Abrir editor nesta pasta", action: () => this.openFilesTab(cwd) }]
-        : []),
+      { label: t("menu.open"), action: () => this.selectTab(id) },
+      { label: t("menu.rename"), action: () => this.openRenameModal("tab", id, tab?.title ?? "") },
+      ...(cwd ? [{ label: t("menu.openEditorHere"), action: () => this.openFilesTab(cwd) }] : []),
       { separator: true },
       ...(moves.length ? moves : []),
-      ...(tab?.folderId ? [{ label: "→ Raiz (fora de pastas)", action: () => this.moveTab(id, null) }] : []),
+      ...(tab?.folderId ? [{ label: t("menu.moveToRoot"), action: () => this.moveTab(id, null) }] : []),
       ...(moves.length || tab?.folderId ? [{ separator: true }] : []),
-      { label: "Fechar aba", danger: true, action: () => this.confirmCloseTab(id) },
+      { label: t("menu.closeTab"), danger: true, action: () => this.confirmCloseTab(id) },
     ];
   }
 
@@ -416,7 +425,7 @@ class AppStore {
     this.confirm = {
       title: opts.title,
       message: opts.message,
-      confirmLabel: opts.confirmLabel ?? "Excluir",
+      confirmLabel: opts.confirmLabel ?? t("confirm.delete"),
       danger: opts.danger ?? true,
       onConfirm: opts.onConfirm,
     };
@@ -429,33 +438,33 @@ class AppStore {
   confirmDeleteWorkspace(id: string): void {
     const ws = this.manifest.workspaces.find((w) => w.id === id);
     this.askConfirm({
-      title: "Excluir workspace",
-      message: `Excluir "${ws?.name ?? ""}"? Todas as abas e sessões dele serão encerradas.`,
+      title: t("confirm.deleteWorkspaceTitle"),
+      message: t("confirm.deleteWorkspaceMsg", { name: ws?.name ?? "" }),
       onConfirm: () => this.deleteWorkspace(id),
     });
   }
   confirmDeleteFolder(id: string): void {
     const f = this.activeWorkspace?.folders.find((f) => f.id === id);
     this.askConfirm({
-      title: "Excluir pasta",
-      message: `Excluir a pasta "${f?.name ?? ""}"? As abas dentro dela voltam para a raiz (não são apagadas).`,
+      title: t("confirm.deleteFolderTitle"),
+      message: t("confirm.deleteFolderMsg", { name: f?.name ?? "" }),
       onConfirm: () => this.deleteFolder(id),
     });
   }
   confirmCloseTab(id: string): void {
     const tab = this.activeWorkspace?.tabs.find((t) => t.id === id);
     this.askConfirm({
-      title: "Fechar aba",
-      message: `Fechar "${tab?.title ?? ""}"? A sessão será encerrada.`,
-      confirmLabel: "Fechar",
+      title: t("confirm.closeTabTitle"),
+      message: t("confirm.closeTabMsg", { name: tab?.title ?? "" }),
+      confirmLabel: t("confirm.close"),
       onConfirm: () => this.closeTab(id),
     });
   }
   confirmClosePane(id: string): void {
     this.askConfirm({
-      title: "Fechar painel",
-      message: "Fechar este painel? A sessão será encerrada.",
-      confirmLabel: "Fechar",
+      title: t("confirm.closePaneTitle"),
+      message: t("confirm.closePaneMsg"),
+      confirmLabel: t("confirm.close"),
       onConfirm: () => this.closePane(id),
     });
   }
@@ -622,6 +631,7 @@ class AppStore {
       id: newId("tab"),
       folderId: this.activeTab?.folderId ?? null,
       title: inWorktree ? `editor ⑂ ${label}` : "editor",
+      // (título fica em inglês: é um rótulo curto e neutro)
       panes: [pane],
       layout: leaf(pane.id),
       activePaneId: pane.id,

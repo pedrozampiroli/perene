@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte";
   import { onMount } from "svelte";
   import { X } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
@@ -14,7 +15,7 @@
   let transcript = $state("");
 
   const HARNESSES = [
-    { id: "all", label: "Todos" },
+    { id: "all", label: t("history.all") },
     { id: "claude", label: "Claude" },
     { id: "codex", label: "Codex" },
     { id: "opencode", label: "OpenCode" },
@@ -41,11 +42,11 @@
 
   async function select(rec: SessionRecord) {
     selected = rec;
-    transcript = "Carregando preview…";
+    transcript = t("history.loadingPreview");
     try {
-      transcript = (await api.sessionTranscript(rec)) || "(sem preview)";
+      transcript = (await api.sessionTranscript(rec)) || t("history.noPreview");
     } catch {
-      transcript = "(sem preview)";
+      transcript = t("history.noPreview");
     }
   }
 
@@ -60,7 +61,7 @@
 <div class="backdrop" onclick={() => (app.historyOpen = false)} role="presentation">
   <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
     <div class="top">
-      <input class="search" placeholder="Buscar sessões, projetos…" bind:value={query} />
+      <input class="search" placeholder={t("history.search")} bind:value={query} />
       <div class="seg">
         {#each HARNESSES as h (h.id)}
           <button class:active={harness === h.id} onclick={() => (harness = h.id)}>{h.label}</button>
@@ -72,9 +73,9 @@
     <div class="body">
       <div class="list">
         {#if loading}
-          <div class="muted">Carregando histórico…</div>
+          <div class="muted">{t("history.loading")}</div>
         {:else if filtered.length === 0}
-          <div class="muted">Nenhuma sessão encontrada.</div>
+          <div class="muted">{t("history.none")}</div>
         {:else}
           {#each filtered as rec (rec.harness + rec.sessionId)}
             <div
@@ -102,14 +103,14 @@
           </div>
           <pre>{transcript}</pre>
           <button class="resume" onclick={() => app.openHistorySession(selected!)}>
-            Retomar em nova aba
+            {t("history.resume")}
           </button>
         {:else}
-          <div class="muted center">Selecione uma sessão para ver o preview.</div>
+          <div class="muted center">{t("history.selectSession")}</div>
         {/if}
       </div>
     </div>
-    <div class="status">{loading ? "…" : `${filtered.length} sessão(ões)`}</div>
+    <div class="status">{loading ? "…" : t("history.count", { count: filtered.length })}</div>
   </div>
 </div>
 

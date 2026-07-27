@@ -21,6 +21,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api } from "./api";
+import { t } from "./i18n.svelte";
 import { PTY_OUTPUT, PTY_EXIT } from "./events";
 
 const isMac = navigator.userAgent.toLowerCase().includes("mac");
@@ -142,7 +143,7 @@ export class PerenePane {
     this.unlisteners.push(
       await listen<{ paneId: string; code: number | null }>(PTY_EXIT, (e) => {
         if (e.payload.paneId !== this.paneId) return;
-        this.term.writeln("\r\n\x1b[90m[processo encerrado]\x1b[0m");
+        this.term.writeln(`\r\n\x1b[90m${t("terminal.processEnded")}\x1b[0m`);
       }),
     );
 

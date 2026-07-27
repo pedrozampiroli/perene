@@ -3,6 +3,7 @@
   import { X } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
+  import { t, LOCALES } from "../lib/i18n.svelte";
   import type { ShellOption } from "../lib/types";
 
   let shells = $state<ShellOption[]>([]);
@@ -14,54 +15,69 @@
     }
   });
 
-  const shortcuts: [string, string][] = [
-    ["⌘T", "Novo terminal (shell)"],
-    ["⌘W", "Fechar painel ativo"],
-    ["⌘D", "Dividir à direita"],
-    ["⌘⇧D", "Dividir abaixo"],
-    ["⌘1–9", "Ir para a aba N"],
-    ["⌘,", "Configurações"],
-    ["⌘C / ⌃⇧C", "Copiar seleção"],
-    ["⌘V / ⌃⇧V", "Colar (texto ou imagem)"],
-    ["⇧Enter", "Nova linha (Claude Code)"],
-  ];
+  const shortcuts = $derived<[string, string][]>([
+    ["⌘T", t("shortcuts.newTerminal")],
+    ["⌘W", t("shortcuts.closePane")],
+    ["⌘D", t("shortcuts.splitRight")],
+    ["⌘⇧D", t("shortcuts.splitDown")],
+    ["⌘1–9", t("shortcuts.goToTab")],
+    ["⌘,", t("shortcuts.settings")],
+    ["⌘Y", t("shortcuts.history")],
+    ["⌘U", t("shortcuts.usage")],
+    ["⌘C / ⌃⇧C", t("shortcuts.copy")],
+    ["⌘V / ⌃⇧V", t("shortcuts.paste")],
+    ["⇧Enter", t("shortcuts.newline")],
+  ]);
 </script>
 
 <div class="backdrop" onclick={() => (app.settingsOpen = false)} role="presentation">
   <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
     <div class="head">
-      <h2>Configurações</h2>
+      <h2>{t("settings.title")}</h2>
       <button class="close" onclick={() => (app.settingsOpen = false)}><X size={16} /></button>
     </div>
 
     <label class="row">
       <div>
-        <div class="t">Modo YOLO</div>
-        <div class="sub">Pula permissões das CLIs (claude/codex/opencode). Cuidado.</div>
+        <div class="t">{t("settings.language")}</div>
+        <div class="sub">{t("settings.languageHint")}</div>
+      </div>
+      <select value={app.settings.locale} onchange={(e) => app.setLocale(e.currentTarget.value)}>
+        <option value="">Auto</option>
+        {#each LOCALES as l (l.code)}
+          <option value={l.code}>{l.flag} {l.name}</option>
+        {/each}
+      </select>
+    </label>
+
+    <label class="row">
+      <div>
+        <div class="t">{t("settings.yolo")}</div>
+        <div class="sub">{t("settings.yoloHint")}</div>
       </div>
       <input type="checkbox" checked={app.settings.yolo} onchange={() => app.toggleYolo()} />
     </label>
 
     <label class="row">
       <div>
-        <div class="t">Perguntar worktree em nova sessão</div>
-        <div class="sub">Ao abrir uma sessão num repo, oferece criar uma worktree isolada.</div>
+        <div class="t">{t("settings.askWorktree")}</div>
+        <div class="sub">{t("settings.askWorktreeHint")}</div>
       </div>
       <input type="checkbox" checked={app.settings.askWorktree} onchange={(e) => app.setAskWorktree(e.currentTarget.checked)} />
     </label>
 
     <label class="row">
       <div>
-        <div class="t">Renderizador WebGL</div>
-        <div class="sub">Mais rápido, porém MUITO mais RAM. Desligado por padrão.</div>
+        <div class="t">{t("settings.webgl")}</div>
+        <div class="sub">{t("settings.webglHint")}</div>
       </div>
       <input type="checkbox" checked={app.settings.webgl} onchange={() => app.toggleWebgl()} />
     </label>
 
     <div class="row">
       <div>
-        <div class="t">Tamanho da fonte</div>
-        <div class="sub">Aplicado a novos terminais.</div>
+        <div class="t">{t("settings.fontSize")}</div>
+        <div class="sub">{t("settings.fontSizeHint")}</div>
       </div>
       <div class="stepper">
         <button onclick={() => app.setFontSize(app.settings.fontSize - 1)}>−</button>
@@ -72,11 +88,11 @@
 
     <div class="row">
       <div>
-        <div class="t">Shell</div>
-        <div class="sub">Programa do terminal (aplica a novos panes). No Windows: WSL, Git Bash…</div>
+        <div class="t">{t("settings.shell")}</div>
+        <div class="sub">{t("settings.shellHint")}</div>
       </div>
       <select value={app.settings.shell} onchange={(e) => app.setShell(e.currentTarget.value)}>
-        <option value="">Padrão do sistema</option>
+        <option value="">{t("settings.shellDefault")}</option>
         {#each shells as s (s.path)}
           <option value={s.path}>{s.label} — {s.path}</option>
         {/each}
@@ -84,7 +100,7 @@
     </div>
 
     <div class="shortcuts">
-      <h3>Atalhos</h3>
+      <h3>{t("settings.shortcuts")}</h3>
       {#each shortcuts as [k, d] (k)}
         <div class="sc"><kbd>{k}</kbd><span>{d}</span></div>
       {/each}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte";
   import { onMount } from "svelte";
   import { X } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
@@ -41,12 +42,12 @@
 <div class="backdrop" onclick={() => (app.usageOpen = false)} role="presentation">
   <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
     <div class="head">
-      <h2>Uso de tokens</h2>
+      <h2>{t("usage.title")}</h2>
       <button class="close" onclick={() => (app.usageOpen = false)}><X size={16} /></button>
     </div>
 
     {#if loading}
-      <div class="muted">Calculando… (a primeira vez varre os arquivos das CLIs)</div>
+      <div class="muted">{t("usage.calculating")}</div>
     {:else}
       <div class="cards">
         {#each stats as s (s.harness)}
@@ -56,7 +57,7 @@
               <span class="ic"><ToolIcon id={s.harness} size={14} /></span>{P.label}
             </div>
             <div class="big">{fmt(s.input + s.output)}</div>
-            <div class="sub">tokens · {s.sessions} sessões</div>
+            <div class="sub">{t("usage.tokens")} · {s.sessions} {t("usage.sessions")}</div>
             <div class="io">
               <span>↑ {fmt(s.input)}</span><span>↓ {fmt(s.output)}</span>
               {#if s.cost > 0}<span>${s.cost.toFixed(2)}</span>{/if}
@@ -65,7 +66,7 @@
         {/each}
       </div>
       <div class="total">
-        Total: <b>{fmt(total.input + total.output)}</b> tokens · {total.sessions} sessões
+        {t("usage.total")}: <b>{fmt(total.input + total.output)}</b> {t("usage.tokens")} · {total.sessions} {t("usage.sessions")}
         {#if total.cost > 0}· ${total.cost.toFixed(2)}{/if}
       </div>
     {/if}
