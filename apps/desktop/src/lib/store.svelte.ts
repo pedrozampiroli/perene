@@ -479,7 +479,7 @@ class AppStore {
     const tab: Tab = {
       id: newId("tab"),
       folderId: null,
-      title: "arquivos",
+      title: "editor",
       panes: [pane],
       layout: leaf(pane.id),
       activePaneId: pane.id,

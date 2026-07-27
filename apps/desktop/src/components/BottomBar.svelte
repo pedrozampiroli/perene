@@ -5,7 +5,7 @@
     Columns3,
     Rows3,
     LayoutGrid,
-    FolderTree,
+    Code2,
     History,
     ChartColumn,
     Settings,
@@ -62,7 +62,7 @@
   <div class="sep"></div>
 
   <div class="group">
-    <button title="Visualizador de arquivos" onclick={() => app.openFilesTab()}><FolderTree size={16} /></button>
+    <button title="Editor de arquivos" onclick={() => app.openFilesTab()}><Code2 size={16} /></button>
     <button title="Histórico de sessões (⌘Y)" onclick={() => (app.historyOpen = true)}><History size={16} /></button>
     <button title="Uso de tokens (⌘U)" onclick={() => (app.usageOpen = true)}><ChartColumn size={16} /></button>
     <button title="Configurações (⌘,)" onclick={() => (app.settingsOpen = true)}><Settings size={16} /></button>

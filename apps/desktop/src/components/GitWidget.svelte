@@ -135,7 +135,7 @@
 
         <div class="sep"></div>
         <button onclick={() => act((r) => api.gitOpenPr(r), "PR aberto")}><GitPullRequestArrow size={13} /> Pull Requests…</button>
-        <button onclick={() => { app.openFilesTab(); menu = false; }}><FolderTree size={13} /> Painel de arquivos</button>
+        <button onclick={() => { app.openFilesTab(); menu = false; }}><FolderTree size={13} /> Abrir editor</button>
       </div>
     {/if}
   </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { X, Folder } from "@lucide/svelte";
+  import { X, Code2 } from "@lucide/svelte";
   import { PerenePane } from "../lib/terminal";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
@@ -14,7 +14,7 @@
   const data = $derived(app.findPane(paneId));
   const isFiles = $derived(data?.kind === "files");
   const prof = $derived(profile(data?.toolProfileId ?? "shell"));
-  const HeadIcon = $derived(isFiles ? Folder : prof.icon);
+  const HeadIcon = $derived(isFiles ? Code2 : prof.icon);
   const isActive = $derived(app.activePaneId === paneId);
   const dirLabel = $derived((data?.workingDirectory ?? "").split("/").filter(Boolean).pop() ?? "~");
 
@@ -47,7 +47,7 @@
 <div class="pane" class:active={isActive} onpointerdown={focusPane}>
   <div class="pane-head" style="--accent:{isFiles ? '#6ea8fe' : prof.color}">
     <span class="hicon" style="color:{isFiles ? '#6ea8fe' : prof.color}"><HeadIcon size={13} /></span>
-    <span class="label">{isFiles ? "Arquivos" : prof.label}</span>
+    <span class="label">{isFiles ? "Editor" : prof.label}</span>
     <span class="dir">{dirLabel}</span>
     <button class="x" title="Fechar painel (⌘W)" onclick={() => app.confirmClosePane(paneId)}><X size={13} /></button>
   </div>

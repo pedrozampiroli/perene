@@ -49,6 +49,39 @@ function langFor(filename: string): Extension[] {
   }
 }
 
+/** Estado de edição de um arquivo (para o editor multi-abas trocar via setState,
+ *  preservando undo/cursor por arquivo). onDirty marca a aba; ⌘S salva. */
+export function createFileState(
+  content: string,
+  filename: string,
+  onDirty: () => void,
+  onSave: (content: string) => void,
+): EditorState {
+  return EditorState.create({
+    doc: content,
+    extensions: [
+      basicSetup,
+      oneDark,
+      keymap.of([indentWithTab]),
+      keymap.of([
+        {
+          key: "Mod-s",
+          preventDefault: true,
+          run: (view) => {
+            onSave(view.state.doc.toString());
+            return true;
+          },
+        },
+      ]),
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged) onDirty();
+      }),
+      ...langFor(filename),
+      EditorView.theme({ "&": { height: "100%" }, ".cm-scroller": { overflow: "auto" } }),
+    ],
+  });
+}
+
 /** Diff lado a lado (split) read-only: `old` (HEAD) à esquerda, `new` à direita. */
 export function createMergeView(
   parent: HTMLElement,

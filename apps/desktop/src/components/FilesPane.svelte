@@ -10,11 +10,12 @@
     FolderGit2,
     X,
   } from "@lucide/svelte";
-  import type { EditorView } from "@codemirror/view";
+  import { EditorView } from "@codemirror/view";
+  import type { EditorState } from "@codemirror/state";
   import type { MergeView } from "@codemirror/merge";
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
-  import { createEditor, createMergeView } from "../lib/editor";
+  import { createFileState, createMergeView } from "../lib/editor";
   import type { Commit, DirEntry, GitStatus, Worktree } from "../lib/types";
   import FileTree from "./FileTree.svelte";
 
@@ -28,14 +29,23 @@
   let tab = $state<FTab>("files");
   let mode = $state<"edit" | "diff">("edit");
   let diffMode = $state<"split" | "unified">("split");
-  let selected = $state<string | null>(null);
-  let currentContent = $state("");
+  let selected = $state<string | null>(null); // usado só no modo diff
   let diffText = $state("");
   let diffOld = $state("");
   let diffNew = $state("");
-  let dirtyDoc = $state(false);
   let mergeHost = $state<HTMLElement>();
   let mergeView: MergeView | undefined;
+
+  // Editor multi-abas: arquivos abertos + estado (undo/cursor) por arquivo.
+  interface OpenFile {
+    path: string;
+    name: string;
+    dirty: boolean;
+  }
+  let openFiles = $state<OpenFile[]>([]);
+  let activeFilePath = $state<string | null>(null);
+  const fileStates = new Map<string, EditorState>();
+  let shownPath: string | null = null;
   let branchMenu = $state(false);
   let newBranch = $state("");
   let msg = $state("");
@@ -136,29 +146,64 @@
   }
 
   async function openFile(path: string) {
-    selected = path;
     mode = "edit";
-    try {
-      currentContent = await api.fsReadFile(path);
-    } catch {
-      currentContent = "";
+    if (!openFiles.some((f) => f.path === path)) {
+      let content = "";
+      try {
+        content = await api.fsReadFile(path);
+      } catch {
+        content = "";
+      }
+      const name = path.split("/").pop() ?? path;
+      fileStates.set(
+        path,
+        createFileState(content, name, () => markDirty(path), (c) => saveFile(path, c)),
+      );
+      openFiles.push({ path, name, dirty: false });
     }
-    dirtyDoc = false;
+    activeFilePath = path;
   }
 
-  // (Re)cria o editor quando o arquivo/host muda.
+  function switchFile(path: string) {
+    mode = "edit";
+    activeFilePath = path;
+  }
+
+  function markDirty(path: string) {
+    const f = openFiles.find((f) => f.path === path);
+    if (f && !f.dirty) f.dirty = true;
+  }
+
+  function closeFile(path: string) {
+    const idx = openFiles.findIndex((f) => f.path === path);
+    if (idx < 0) return;
+    openFiles.splice(idx, 1);
+    fileStates.delete(path);
+    if (shownPath === path) shownPath = null;
+    if (activeFilePath === path) {
+      activeFilePath = openFiles[Math.min(idx, openFiles.length - 1)]?.path ?? null;
+    }
+  }
+
+  // Uma única EditorView; troca de estado ao mudar de aba (preserva undo/cursor).
   $effect(() => {
-    if (mode !== "edit" || !editorHost || selected === null) return;
-    const host = editorHost;
-    const file = selected;
-    const content = currentContent;
-    editorView?.destroy();
-    editorView = createEditor(host, content, file, saveFile);
-    editorView.dom.addEventListener("input", () => (dirtyDoc = true));
-    return () => {
-      editorView?.destroy();
-      editorView = undefined;
-    };
+    if (mode !== "edit" || !editorHost) return;
+    const path = activeFilePath;
+    if (!path) return;
+    const st = fileStates.get(path);
+    if (!st) return;
+    if (!editorView) {
+      editorView = new EditorView({ state: st, parent: editorHost });
+      shownPath = path;
+      editorView.focus();
+      return;
+    }
+    if (path !== shownPath) {
+      if (shownPath) fileStates.set(shownPath, editorView.state); // preserva edições
+      editorView.setState(fileStates.get(path)!);
+      shownPath = path;
+      editorView.focus();
+    }
   });
 
   // (Re)cria o diff lado a lado quando as versões/host mudam.
@@ -176,11 +221,11 @@
     };
   });
 
-  async function saveFile(content: string) {
-    if (!selected) return;
+  async function saveFile(path: string, content: string) {
     try {
-      await api.fsWriteFile(selected, content);
-      dirtyDoc = false;
+      await api.fsWriteFile(path, content);
+      const f = openFiles.find((f) => f.path === path);
+      if (f) f.dirty = false;
       flash("Salvo");
       await loadStatus();
     } catch (e) {
@@ -262,7 +307,7 @@
     {#if gs?.isRepo}
       <div class="branch-wrap">
         <button class="branch" onclick={toggleBranchMenu} title={"Branch: " + gs.branch}>
-          <GitBranch size={14} /><span class="bname">{gs.branch}</span>{#if dirtyDoc || gs.dirty}<span class="dot"></span>{/if}
+          <GitBranch size={14} /><span class="bname">{gs.branch}</span>{#if gs.dirty}<span class="dot"></span>{/if}
         </button>
         {#if gs.ahead > 0}<span class="ab">↑{gs.ahead}</span>{/if}
         {#if gs.behind > 0}<span class="ab">↓{gs.behind}</span>{/if}
@@ -358,14 +403,34 @@
     </div>
 
     <div class="main">
-      {#if selected === null}
-        <div class="empty center">Selecione um arquivo.</div>
-      {:else if mode === "edit"}
-        <div class="editor-head">{rel(selected)}{#if dirtyDoc} •{/if}</div>
-        <div class="editor" bind:this={editorHost}></div>
-      {:else}
+      <!-- Abas dos arquivos abertos (estilo VSCodium) -->
+      {#if mode === "edit" && openFiles.length}
+        <div class="etabs">
+          {#each openFiles as f (f.path)}
+            <div
+              class="etab"
+              class:active={f.path === activeFilePath}
+              onclick={() => switchFile(f.path)}
+              role="button"
+              tabindex="0"
+              title={f.path}
+            >
+              <span class="en">{f.name}</span>
+              {#if f.dirty}<span class="edot" title="não salvo"></span>{/if}
+              <button class="ex" title="Fechar aba" onclick={(e) => { e.stopPropagation(); closeFile(f.path); }}><X size={12} /></button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Editor (sempre montado; escondido no modo diff / sem arquivo) -->
+      <div class="editor" bind:this={editorHost} style:display={mode === "edit" && openFiles.length ? "block" : "none"}></div>
+
+      {#if mode === "edit" && openFiles.length === 0}
+        <div class="empty center">Selecione um arquivo na árvore.</div>
+      {:else if mode === "diff"}
         <div class="editor-head">
-          {rel(selected)} — diff
+          {rel(selected ?? "")} — diff
           <span class="diff-legend">
             {#if diffMode === "split"}<span class="lg old">antes (HEAD)</span><span class="lg new">agora</span>{/if}
           </span>
@@ -734,6 +799,59 @@
     color: #9aa0a6;
     background: #252526;
     border-bottom: 1px solid #2a2a2a;
+  }
+  .etabs {
+    display: flex;
+    align-items: stretch;
+    height: 30px;
+    flex: 0 0 30px;
+    background: #252526;
+    border-bottom: 1px solid #2a2a2a;
+    overflow-x: auto;
+  }
+  .etab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 0 12px;
+    max-width: 180px;
+    font-size: 12px;
+    color: #9aa0a6;
+    cursor: pointer;
+    border-right: 1px solid #2a2a2a;
+    white-space: nowrap;
+  }
+  .etab:hover {
+    background: #2a2d2e;
+  }
+  .etab.active {
+    background: #1e1e1e;
+    color: #fff;
+  }
+  .etab .en {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .edot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #e2c08d;
+    flex: 0 0 auto;
+  }
+  .ex {
+    display: flex;
+    align-items: center;
+    background: none;
+    border: none;
+    color: #6a6a6a;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+  }
+  .ex:hover {
+    color: #eee;
+    background: #4a4a4a;
   }
   .editor {
     flex: 1 1 auto;
