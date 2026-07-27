@@ -1,16 +1,19 @@
-# Handoff — Perene v2 (estado ao fim da sessão de 2026-07-11)
+# Handoff — Perene v2 (atualizado em 2026-07-27)
 
 > Documento pra retomar o projeto numa nova sessão. Leia junto com
 > [`../PLAN.md`](../PLAN.md), [`../CLAUDE.md`](../CLAUDE.md) e o `git log`.
 
 ## Estado atual
 
-**Todos os milestones M0–M6 do PLAN.md foram executados e commitados.**
+**Todos os milestones M0–M6 do PLAN.md foram executados**, mais uma rodada
+grande de melhorias pós-uso (ver `git log`).
 
-- Branch: **`feat/perene-v2-milestones`** (6 commits) sobre o `main` (que tem o
-  commit-base do M0). **Não mergeado** — decisão do usuário pendente.
-- Working tree limpo. `cargo test --workspace` verde; `npm run check` 0 erros.
-- Sem git remote configurado (por isso "CI verde" ainda não foi comprovado).
+- **Repositório:** https://github.com/pedrozampiroli/perene (**privado**).
+  Tudo mergeado no `main` (29 commits); o branch de trabalho foi removido.
+- **CI VERDE nas 3 plataformas** (macOS 2m9s · Ubuntu 5m9s · Windows 9m52s) —
+  fecha o último critério de aceite pendente do M6.
+- Working tree limpo. `cargo test --workspace` verde (11 suítes); `npm run check`
+  0 erros.
 
 ```
 6510894 M6: packaging + CI + RAM sob o alvo
@@ -55,7 +58,7 @@ Instalador mac já gerado e testado: `target/release/bundle/dmg/Perene_0.1.0_aar
   Shift+Enter no Claude Code, scroll trackpad, ⌘C/⌘V, `vim`. **Task #1 segue
   aberta por causa disso.**
 - ⏳ Fluxos M3/M5: splits, drag&drop, renomear, abrir/editar/⌘S/diff no viewer.
-- ⏳ "CI verde": configurar remote no GitHub + push pra rodar o workflow.
+- ✅ CI verde nas 3 plataformas (feito em 2026-07-27).
 
 ## Mapa da arquitetura
 
@@ -110,11 +113,10 @@ scrollback/, paste/, usage-cache.json).
   renderer. mac é a plataforma completa.
 - **cwd tracking** (atualizar `pane.workingDirectory` via OSC 7) não foi
   implementado — o cwd fica o do spawn. Debounce de save já está pronto pra isso.
-- **Ícone**: gerado por um gradiente placeholder (`src-tauri/gen-icon.mjs` +
-  `icon-source.png`). Trocar por um ícone real quando quiser.
-- **Fila de próximos passos sugerida**: (1) validar M0/M3/M5 manualmente;
-  (2) push + CI; (3) mergear o branch; (4) named pipes no Windows;
-  (5) cwd tracking; (6) ícone real.
+- **Ícone**: já é o ícone real do Perene (importado da v1).
+- **Fila de próximos passos sugerida**: (1) named pipes no Windows (o IPC do
+  daemon ainda é `#[cfg(unix)]`); (2) cwd tracking (OSC 7); (3) gerar release
+  com artefatos (o job `bundle` roda em tags `v*` ou dispatch manual).
 
 ## Referências da v1 (não mexer — `~/Projects/tool/zampimanager`)
 
