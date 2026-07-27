@@ -8,6 +8,8 @@
     GitPullRequestArrow,
     GitCommitHorizontal,
     FolderGit2,
+    Code2,
+    Terminal,
     X,
   } from "@lucide/svelte";
   import { EditorView } from "@codemirror/view";
@@ -409,9 +411,17 @@
           </button>
         </div>
         {#each worktrees as w (w.path)}
-          <div class="wt">
+          <div class="wt" class:cur={w.path.replace(/\/$/, "") === root.replace(/\/$/, "")}>
             <div class="wtbranch">{w.branch || "(detached)"} <span class="wthead">{w.head}</span></div>
             <div class="wtpath">{w.path}</div>
+            <div class="wtacts">
+              <button title="Abrir o editor nesta worktree" onclick={() => app.openFilesTab(w.path)}>
+                <Code2 size={12} /> Editor
+              </button>
+              <button title="Abrir uma sessão nesta worktree" onclick={() => app.createTabInDir("claude", w.path, `⑂ ${w.branch || "wt"}`)}>
+                <Terminal size={12} /> Sessão
+              </button>
+            </div>
           </div>
         {:else}
           <div class="empty">Nenhum worktree.</div>
@@ -805,6 +815,32 @@
   }
   .wt {
     padding: 6px 10px;
+    border-left: 2px solid transparent;
+  }
+  .wt.cur {
+    border-left-color: #4ec9b0;
+    background: #4ec9b012;
+  }
+  .wtacts {
+    display: flex;
+    gap: 6px;
+    margin-top: 5px;
+  }
+  .wtacts button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #333;
+    border: none;
+    color: #ccc;
+    border-radius: 4px;
+    padding: 3px 8px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  .wtacts button:hover {
+    background: #3f3f46;
+    color: #fff;
   }
   .wtbranch {
     font-size: 12.5px;

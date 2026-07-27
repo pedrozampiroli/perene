@@ -15,6 +15,7 @@ import type {
   SplitDirection,
   Tab,
   Workspace,
+  Worktree,
 } from "./types";
 
 function uuid(): string {
@@ -130,9 +131,12 @@ export interface ContextMenuState {
 export interface NewSession {
   profileId: string;
   repoRoot: string | null;
-  useWorktree: boolean;
+  /** "project" = raiz do projeto · "existing" = worktree já existente · "new" = criar */
+  mode: "project" | "existing" | "new";
   base: string;
   branches: string[];
+  worktrees: Worktree[];
+  existingPath: string;
   name: string;
   creating: boolean;
   error: string;
@@ -363,9 +367,13 @@ class AppStore {
       disabled: tab?.folderId === f.id,
       action: () => this.moveTab(id, f.id),
     }));
+    const cwd = tab?.panes[0]?.workingDirectory;
     return [
       { label: "Abrir", action: () => this.selectTab(id) },
       { label: "Renomear…", action: () => this.openRenameModal("tab", id, tab?.title ?? "") },
+      ...(cwd
+        ? [{ label: "Abrir editor nesta pasta", action: () => this.openFilesTab(cwd) }]
+        : []),
       { separator: true },
       ...(moves.length ? moves : []),
       ...(tab?.folderId ? [{ label: "→ Raiz (fora de pastas)", action: () => this.moveTab(id, null) }] : []),
@@ -590,15 +598,30 @@ class AppStore {
     };
   }
 
-  /** Abre um visualizador de arquivos numa aba nova (raiz = dir do workspace). */
-  openFilesTab(): void {
+  /** Diretório "de trabalho" atual: o do pane ativo (que pode ser uma worktree),
+   *  caindo pro da aba ativa e, por fim, pro do workspace. */
+  get currentDir(): string {
+    return (
+      this.findPane(this.activePaneId ?? "")?.workingDirectory ??
+      this.activeTab?.panes[0]?.workingDirectory ??
+      this.activeWorkspace?.directory ??
+      this.home
+    );
+  }
+
+  /** Abre o editor numa aba nova. Sem `dir`, usa o diretório do pane ATIVO —
+   *  assim, se a sessão está numa worktree, o editor abre nela (e não na raiz). */
+  openFilesTab(dir?: string): void {
     const ws = this.activeWorkspace;
     if (!ws) return;
-    const pane = this.makeFilesPane(ws.directory ?? this.home);
+    const cwd = dir ?? this.currentDir;
+    const pane = this.makeFilesPane(cwd);
+    const label = cwd.split("/").filter(Boolean).pop() ?? "editor";
+    const inWorktree = cwd.includes("/.perene/worktrees/");
     const tab: Tab = {
       id: newId("tab"),
-      folderId: null,
-      title: "editor",
+      folderId: this.activeTab?.folderId ?? null,
+      title: inWorktree ? `editor ⑂ ${label}` : "editor",
       panes: [pane],
       layout: leaf(pane.id),
       activePaneId: pane.id,
@@ -679,12 +702,23 @@ class AppStore {
     } catch {
       branches = [gs.branch];
     }
+    // Worktrees já existentes (exclui a raiz do próprio repo).
+    let worktrees: Worktree[] = [];
+    try {
+      worktrees = (await api.gitWorktreeList(gs.root)).filter(
+        (w) => w.path.replace(/\/$/, "") !== gs!.root!.replace(/\/$/, ""),
+      );
+    } catch {
+      worktrees = [];
+    }
     this.newSession = {
       profileId,
       repoRoot: gs.root,
-      useWorktree: false,
+      mode: "project",
       base: gs.branch,
       branches,
+      worktrees,
+      existingPath: worktrees[0]?.path ?? "",
       name: `${profileId}-${uuid().slice(0, 5)}`,
       creating: false,
       error: "",
@@ -694,11 +728,23 @@ class AppStore {
   async confirmNewSession(): Promise<void> {
     const s = this.newSession;
     if (!s) return;
-    if (!s.useWorktree) {
+
+    if (s.mode === "project") {
       this.newSession = null;
       this.createTab(s.profileId);
       return;
     }
+
+    // Worktree já existente → abre a sessão direto nela.
+    if (s.mode === "existing") {
+      if (!s.existingPath) return;
+      const wt = s.worktrees.find((w) => w.path === s.existingPath);
+      const label = wt?.branch || s.existingPath.split("/").filter(Boolean).pop() || "worktree";
+      this.newSession = null;
+      this.createTabInDir(s.profileId, s.existingPath, `⑂ ${label}`);
+      return;
+    }
+
     if (!s.repoRoot || !s.name.trim()) return;
     s.creating = true;
     s.error = "";

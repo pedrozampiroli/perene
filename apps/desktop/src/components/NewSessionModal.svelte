@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { GitBranch, FolderOpen } from "@lucide/svelte";
+  import { GitBranch, FolderOpen, FolderGit2 } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
 
@@ -7,7 +7,7 @@
 
   function onKey(e: KeyboardEvent) {
     if (e.key === "Escape") app.newSession = null;
-    else if (e.key === "Enter" && !app.newSession?.useWorktree) app.confirmNewSession();
+    else if (e.key === "Enter" && app.newSession?.mode !== "new") app.confirmNewSession();
   }
 </script>
 
@@ -17,23 +17,46 @@
     <div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={onKey} role="dialog" aria-modal="true" tabindex="-1">
       <h3>Nova sessão — {prof.label}</h3>
 
-      <label class="opt" class:sel={!s.useWorktree}>
-        <input type="radio" checked={!s.useWorktree} onchange={() => (s.useWorktree = false)} />
+      <label class="opt" class:sel={s.mode === "project"}>
+        <input type="radio" checked={s.mode === "project"} onchange={() => (s.mode = "project")} />
         <div>
           <div class="t"><FolderOpen size={14} /> No diretório do projeto</div>
           <div class="sub">Abre a sessão direto no diretório do workspace.</div>
         </div>
       </label>
 
-      <label class="opt" class:sel={s.useWorktree}>
-        <input type="radio" checked={s.useWorktree} onchange={() => (s.useWorktree = true)} />
+      {#if s.worktrees.length}
+        <label class="opt" class:sel={s.mode === "existing"}>
+          <input type="radio" checked={s.mode === "existing"} onchange={() => (s.mode = "existing")} />
+          <div>
+            <div class="t"><FolderGit2 size={14} /> Em uma worktree existente</div>
+            <div class="sub">Entra numa worktree que já existe — útil pra acompanhar o que a IA está fazendo.</div>
+          </div>
+        </label>
+
+        {#if s.mode === "existing"}
+          <div class="wt">
+            <label class="field">
+              <span>Worktree</span>
+              <select bind:value={s.existingPath}>
+                {#each s.worktrees as w (w.path)}
+                  <option value={w.path}>{w.branch || "(detached)"} — {w.path.split("/").slice(-1)[0]}</option>
+                {/each}
+              </select>
+            </label>
+          </div>
+        {/if}
+      {/if}
+
+      <label class="opt" class:sel={s.mode === "new"}>
+        <input type="radio" checked={s.mode === "new"} onchange={() => (s.mode = "new")} />
         <div>
-          <div class="t"><GitBranch size={14} /> Em uma worktree isolada</div>
+          <div class="t"><GitBranch size={14} /> Em uma worktree nova</div>
           <div class="sub">Cria um branch/worktree novo em <code>.perene/worktrees/</code> (ignorado no git).</div>
         </div>
       </label>
 
-      {#if s.useWorktree}
+      {#if s.mode === "new"}
         <div class="wt">
           <label class="field">
             <span>Baseada no branch</span>
@@ -58,7 +81,13 @@
 
       <div class="actions">
         <button class="cancel" onclick={() => (app.newSession = null)}>Cancelar</button>
-        <button class="ok" disabled={s.creating || (s.useWorktree && !s.name.trim())} onclick={() => app.confirmNewSession()}>
+        <button
+          class="ok"
+          disabled={s.creating ||
+            (s.mode === "new" && !s.name.trim()) ||
+            (s.mode === "existing" && !s.existingPath)}
+          onclick={() => app.confirmNewSession()}
+        >
           {s.creating ? "Criando…" : "Criar sessão"}
         </button>
       </div>
