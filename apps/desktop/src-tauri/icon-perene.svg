@@ -1,0 +1,35 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Perene app icon">
+  <defs>
+    <!-- fundo evergreen -> esmeralda -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0"    stop-color="#0A3D2D"/>
+      <stop offset="0.55" stop-color="#0E7A58"/>
+      <stop offset="1"    stop-color="#17B183"/>
+    </linearGradient>
+    <radialGradient id="gloss" cx="0.30" cy="0.22" r="0.95">
+      <stop offset="0"   stop-color="#FFFFFF" stop-opacity="0.20"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="markShadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="9" stdDeviation="13" flood-color="#062A1E" flood-opacity="0.30"/>
+    </filter>
+  </defs>
+
+  <!-- placa (squircle) -->
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#gloss)"/>
+  <rect x="24" y="24" width="976" height="976" rx="206" fill="none"
+        stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="4"/>
+
+  <!-- marca: prompt > P com cursor -->
+  <g filter="url(#markShadow)">
+    <g fill="none" stroke="#F3FFFA" stroke-linecap="round" stroke-linejoin="round">
+      <!-- chevron ">" (prefixo do prompt) -->
+      <path d="M 269 392 L 379 512 L 269 632" stroke-width="60"/>
+      <!-- letra P (herói) -->
+      <path d="M 517 712 L 517 312 L 647 312 Q 747 312 747 412 Q 747 512 647 512 L 517 512" stroke-width="76"/>
+    </g>
+    <!-- cursor (bloco de input) -->
+    <rect x="672" y="588" width="112" height="124" rx="24" fill="#F3FFFA"/>
+  </g>
+</svg>

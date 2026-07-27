@@ -4,6 +4,7 @@
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
   import { profile } from "../lib/profiles";
+  import ToolIcon from "./ToolIcon.svelte";
   import type { UsageStats } from "../lib/types";
 
   let stats = $state<UsageStats[]>([]);
@@ -50,10 +51,9 @@
       <div class="cards">
         {#each stats as s (s.harness)}
           {@const P = profile(s.harness)}
-          {@const Icon = P.icon}
           <div class="card" style="--c:{P.color}">
             <div class="ct">
-              <span class="ic"><Icon size={14} /></span>{P.label}
+              <span class="ic"><ToolIcon id={s.harness} size={14} /></span>{P.label}
             </div>
             <div class="big">{fmt(s.input + s.output)}</div>
             <div class="sub">tokens · {s.sessions} sessões</div>

@@ -11,8 +11,24 @@
   import NameModal from "./components/NameModal.svelte";
   import ConfirmModal from "./components/ConfirmModal.svelte";
   import NewSessionModal from "./components/NewSessionModal.svelte";
+  import ContextMenu from "./components/ContextMenu.svelte";
 
   const isMac = navigator.userAgent.toLowerCase().includes("mac");
+
+  // ── Sidebar redimensionável ────────────────────────────────────────────────
+  let resizingSidebar = $state(false);
+  function startSidebarResize(e: PointerEvent) {
+    e.preventDefault();
+    resizingSidebar = true;
+    const move = (ev: PointerEvent) => app.setSidebarWidth(ev.clientX);
+    const up = () => {
+      resizingSidebar = false;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
 
   onMount(() => {
     void app.load();
@@ -77,8 +93,10 @@
 </script>
 
 {#if app.loaded}
-  <div class="app">
+  <div class="app" style="--sw:{app.settings.sidebarWidth}px">
     <div class="sidebar-col"><Sidebar /></div>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="vdivider" class:dragging={resizingSidebar} onpointerdown={startSidebarResize}></div>
     <div class="topbar-col"><TopBar /></div>
     <div class="main"><TabGrid /></div>
     <div class="bottom"><BottomBar /></div>
@@ -95,6 +113,7 @@
   <NameModal />
   <ConfirmModal />
   <NewSessionModal />
+  <ContextMenu />
 {:else}
   <div class="splash">Perene…</div>
 {/if}
@@ -102,7 +121,7 @@
 <style>
   .app {
     display: grid;
-    grid-template-columns: 240px 1fr;
+    grid-template-columns: var(--sw, 240px) 1px 1fr;
     grid-template-rows: 32px 1fr 34px;
     height: 100vh;
     width: 100vw;
@@ -111,24 +130,44 @@
   .sidebar-col {
     grid-row: 1 / 3;
     grid-column: 1;
-    border-right: 1px solid #2a2a2a;
     min-height: 0;
+    min-width: 0;
+  }
+  /* Divisor arrastável da sidebar (área de clique maior que a linha). */
+  .vdivider {
+    grid-row: 1 / 3;
+    grid-column: 2;
+    position: relative;
+    background: #2a2a2a;
+    cursor: col-resize;
+  }
+  .vdivider::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -3px;
+    right: -3px;
+  }
+  .vdivider:hover,
+  .vdivider.dragging {
+    background: #007acc;
   }
   .topbar-col {
     grid-row: 1;
-    grid-column: 2;
+    grid-column: 3;
     min-width: 0;
   }
   .main {
     grid-row: 2;
-    grid-column: 2;
+    grid-column: 3;
     min-width: 0;
     min-height: 0;
     background: #1e1e1e;
   }
   .bottom {
     grid-row: 3;
-    grid-column: 1 / 3;
+    grid-column: 1 / 4;
   }
   .splash {
     display: flex;

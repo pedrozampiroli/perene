@@ -2,6 +2,7 @@
   import { Plus, FolderPlus, ChevronRight, ChevronDown, X, Folder, FolderOpen, FolderCog } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
+  import ToolIcon from "./ToolIcon.svelte";
   import type { Tab } from "../lib/types";
 
   const ws = $derived(app.activeWorkspace);
@@ -13,22 +14,39 @@
   }
 
   // ── Drag & drop de abas ──────────────────────────────────────────────────
+  // IMPORTANTE: os handlers de drop precisam de stopPropagation, senão o evento
+  // borbulha até a raiz (.tree) e a aba acaba caindo fora da pasta.
+  let dragging = $state<string | null>(null);
+  let overFolder = $state<string | null>(null); // id da pasta (ou "__root__")
+
   function onDragStart(e: DragEvent, tabId: string) {
+    dragging = tabId;
     e.dataTransfer?.setData("text/plain", tabId);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }
-  function dropOnTab(e: DragEvent, target: Tab) {
+  function onDragEnd() {
+    dragging = null;
+    overFolder = null;
+  }
+  function allowDrop(e: DragEvent, folderId: string | null) {
     e.preventDefault();
-    const id = e.dataTransfer?.getData("text/plain");
-    if (id) app.moveTab(id, target.folderId ?? null, target.id);
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    overFolder = folderId ?? "__root__";
   }
   function dropOnFolder(e: DragEvent, folderId: string | null) {
     e.preventDefault();
-    const id = e.dataTransfer?.getData("text/plain");
+    e.stopPropagation();
+    const id = e.dataTransfer?.getData("text/plain") || dragging;
     if (id) app.moveTab(id, folderId);
+    onDragEnd();
   }
-  function allowDrop(e: DragEvent) {
+  function dropOnTab(e: DragEvent, target: Tab) {
     e.preventDefault();
+    e.stopPropagation();
+    const id = e.dataTransfer?.getData("text/plain") || dragging;
+    if (id && id !== target.id) app.moveTab(id, target.folderId ?? null, target.id);
+    onDragEnd();
   }
 </script>
 
@@ -44,6 +62,7 @@
         class:active={w.id === ws?.id}
         onclick={() => app.selectWorkspace(w.id)}
         ondblclick={() => app.openRenameModal("ws", w.id, w.name)}
+        oncontextmenu={(e) => app.openContextMenu(e, app.workspaceMenu(w.id))}
         role="button"
         tabindex="0"
       >
@@ -66,14 +85,31 @@
     <button class="add" title="Nova pasta" onclick={() => app.openNewFolderModal()}><FolderPlus size={15} /></button>
   </div>
 
-  <div class="tree" ondragover={allowDrop} ondrop={(e) => dropOnFolder(e, null)}>
+  <div
+    class="tree"
+    class:over={overFolder === "__root__"}
+    ondragover={(e) => allowDrop(e, null)}
+    ondragleave={() => (overFolder = null)}
+    ondrop={(e) => dropOnFolder(e, null)}
+    oncontextmenu={(e) => ws && app.openContextMenu(e, app.workspaceMenu(ws.id))}
+    role="tree"
+    tabindex="-1"
+  >
     {#if ws}
       {#each ws.folders as folder (folder.id)}
-        <div class="folder" ondragover={allowDrop} ondrop={(e) => dropOnFolder(e, folder.id)} role="group">
+        <div
+          class="folder"
+          class:over={overFolder === folder.id}
+          ondragover={(e) => allowDrop(e, folder.id)}
+          ondragleave={(e) => { e.stopPropagation(); overFolder = null; }}
+          ondrop={(e) => dropOnFolder(e, folder.id)}
+          role="group"
+        >
           <div
             class="folder-head"
             onclick={() => app.toggleFolder(folder.id)}
             ondblclick={(e) => { e.stopPropagation(); app.openRenameModal("folder", folder.id, folder.name); }}
+            oncontextmenu={(e) => app.openContextMenu(e, app.folderMenu(folder.id))}
             role="button"
             tabindex="0"
           >
@@ -82,12 +118,15 @@
             </span>
             {#if folder.collapsed}<Folder size={14} class="ficon" />{:else}<FolderOpen size={14} class="ficon" />{/if}
             <span class="fname">{folder.name}</span>
+            <span class="fcount">{app.tabsInFolder(ws, folder.id).length}</span>
             <button class="mini" title="Definir diretório da pasta" onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
             <button class="mini" title="Remover pasta" onclick={(e) => { e.stopPropagation(); app.confirmDeleteFolder(folder.id); }}><X size={12} /></button>
           </div>
           {#if !folder.collapsed}
             {#each app.tabsInFolder(ws, folder.id) as tab (tab.id)}
               {@render tabRow(tab)}
+            {:else}
+              <div class="fempty">arraste uma aba aqui</div>
             {/each}
           {/if}
         </div>
@@ -102,20 +141,22 @@
 
 {#snippet tabRow(tab: Tab)}
   {@const prof = profile(tab.panes[0]?.toolProfileId ?? "shell")}
-  {@const Icon = prof.icon}
   <div
     class="tab-row"
     class:active={tab.id === ws?.activeTabId}
+    class:drag={dragging === tab.id}
     draggable="true"
     ondragstart={(e) => onDragStart(e, tab.id)}
-    ondragover={allowDrop}
+    ondragend={onDragEnd}
+    ondragover={(e) => allowDrop(e, tab.folderId ?? null)}
     ondrop={(e) => dropOnTab(e, tab)}
     onclick={() => app.selectTab(tab.id)}
     ondblclick={(e) => { e.stopPropagation(); app.openRenameModal("tab", tab.id, tab.title); }}
+    oncontextmenu={(e) => app.openContextMenu(e, app.tabMenu(tab.id))}
     role="button"
     tabindex="0"
   >
-    <span class="ticon" style="color:{prof.color}"><Icon size={14} /></span>
+    <span class="ticon" style="color:{prof.color}"><ToolIcon id={tab.panes[0]?.toolProfileId ?? "shell"} size={14} /></span>
     <span class="ttitle">{tab.title}</span>
     <button class="mini" title="Fechar aba" onclick={(e) => { e.stopPropagation(); app.confirmCloseTab(tab.id); }}><X size={12} /></button>
   </div>
@@ -179,6 +220,9 @@
   .tab-row.active {
     background: #37373d;
   }
+  .tab-row.drag {
+    opacity: 0.45;
+  }
   .name,
   .ttitle,
   .fname {
@@ -186,6 +230,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .fcount {
+    font-size: 10px;
+    color: #6a6a6a;
+    background: #2a2a2a;
+    border-radius: 8px;
+    padding: 0 5px;
   }
   .dirline {
     display: flex;
@@ -213,7 +264,28 @@
   .tree {
     flex: 1 1 auto;
     padding: 4px 6px;
-    min-height: 40px;
+    min-height: 60px;
+    border: 1px dashed transparent;
+    border-radius: 6px;
+  }
+  /* Feedback de onde a aba vai cair. */
+  .tree.over {
+    border-color: #007acc80;
+    background: #007acc10;
+  }
+  .folder {
+    border: 1px dashed transparent;
+    border-radius: 6px;
+  }
+  .folder.over {
+    border-color: #007acc;
+    background: #007acc1a;
+  }
+  .fempty {
+    font-size: 11px;
+    color: #5a5a5a;
+    padding: 3px 8px 5px 30px;
+    font-style: italic;
   }
   .tab-row {
     margin-left: 6px;

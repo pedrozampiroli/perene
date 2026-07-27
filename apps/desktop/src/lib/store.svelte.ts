@@ -113,6 +113,20 @@ export interface ConfirmState {
   onConfirm: () => void;
 }
 
+export interface MenuItem {
+  label?: string;
+  action?: () => void;
+  danger?: boolean;
+  separator?: boolean;
+  disabled?: boolean;
+}
+
+export interface ContextMenuState {
+  x: number;
+  y: number;
+  items: MenuItem[];
+}
+
 export interface NewSession {
   profileId: string;
   repoRoot: string | null;
@@ -126,7 +140,15 @@ export interface NewSession {
 
 class AppStore {
   manifest = $state<Manifest>({ version: 3, activeWorkspaceId: null, workspaces: [] });
-  settings = $state<Settings>({ yolo: false, fontSize: 13, webgl: false, shell: "", askWorktree: true });
+  settings = $state<Settings>({
+    yolo: false,
+    fontSize: 13,
+    webgl: false,
+    shell: "",
+    askWorktree: true,
+    sidebarWidth: 240,
+    editorPanelWidth: 240,
+  });
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
   settingsOpen = $state(false);
@@ -135,6 +157,7 @@ class AppStore {
   nameModal = $state<NameModal | null>(null);
   confirm = $state<ConfirmState | null>(null);
   newSession = $state<NewSession | null>(null);
+  contextMenu = $state<ContextMenuState | null>(null);
   home = "";
 
   /** Panes criados NESTA sessão (spawn fresco). Os demais, ao serem restaurados
@@ -288,6 +311,90 @@ class AppStore {
       }
     }
     this.nameModal = null;
+  }
+
+  // ── Menu de contexto (botão direito) ───────────────────────────────────────
+  openContextMenu(e: MouseEvent, items: MenuItem[]): void {
+    e.preventDefault();
+    e.stopPropagation();
+    this.contextMenu = { x: e.clientX, y: e.clientY, items };
+  }
+
+  /** Itens do menu de um workspace. */
+  workspaceMenu(id: string): MenuItem[] {
+    const ws = this.manifest.workspaces.find((w) => w.id === id);
+    return [
+      { label: "Nova sessão…", action: () => { this.selectWorkspace(id); void this.startNewSession("shell"); } },
+      { label: "Nova pasta…", action: () => { this.selectWorkspace(id); this.openNewFolderModal(); } },
+      { separator: true },
+      { label: "Renomear…", action: () => this.openRenameModal("ws", id, ws?.name ?? "") },
+      { label: "Definir diretório…", action: () => void this.changeWorkspaceDirectory(id) },
+      { separator: true },
+      {
+        label: "Excluir workspace",
+        danger: true,
+        disabled: this.manifest.workspaces.length <= 1,
+        action: () => this.confirmDeleteWorkspace(id),
+      },
+    ];
+  }
+
+  /** Itens do menu de uma pasta. */
+  folderMenu(id: string): MenuItem[] {
+    const f = this.activeWorkspace?.folders.find((f) => f.id === id);
+    return [
+      { label: "Nova sessão nesta pasta…", action: () => void this.startNewSessionInFolder(id) },
+      { separator: true },
+      { label: "Renomear…", action: () => this.openRenameModal("folder", id, f?.name ?? "") },
+      { label: "Definir diretório…", action: () => void this.changeFolderDirectory(id) },
+      { label: f?.collapsed ? "Expandir" : "Recolher", action: () => this.toggleFolder(id) },
+      { separator: true },
+      { label: "Excluir pasta", danger: true, action: () => this.confirmDeleteFolder(id) },
+    ];
+  }
+
+  /** Itens do menu de uma aba. */
+  tabMenu(id: string): MenuItem[] {
+    const ws = this.activeWorkspace;
+    const tab = ws?.tabs.find((t) => t.id === id);
+    const folders = ws?.folders ?? [];
+    const moves: MenuItem[] = folders.map((f) => ({
+      label: `→ ${f.name}`,
+      disabled: tab?.folderId === f.id,
+      action: () => this.moveTab(id, f.id),
+    }));
+    return [
+      { label: "Abrir", action: () => this.selectTab(id) },
+      { label: "Renomear…", action: () => this.openRenameModal("tab", id, tab?.title ?? "") },
+      { separator: true },
+      ...(moves.length ? moves : []),
+      ...(tab?.folderId ? [{ label: "→ Raiz (fora de pastas)", action: () => this.moveTab(id, null) }] : []),
+      ...(moves.length || tab?.folderId ? [{ separator: true }] : []),
+      { label: "Fechar aba", danger: true, action: () => this.confirmCloseTab(id) },
+    ];
+  }
+
+  /** Nova sessão já dentro de uma pasta (usa o diretório dela). */
+  async startNewSessionInFolder(folderId: string): Promise<void> {
+    const ws = this.activeWorkspace;
+    if (!ws) return;
+    const folder = ws.folders.find((f) => f.id === folderId);
+    const cwd = folder?.directory ?? ws.directory ?? this.home;
+    const pane = this.makePane("shell", cwd);
+    const tab: Tab = {
+      id: newId("tab"),
+      folderId,
+      title: "shell",
+      panes: [pane],
+      layout: leaf(pane.id),
+      activePaneId: pane.id,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    ws.tabs.push(tab);
+    ws.activeTabId = tab.id;
+    this.activePaneId = pane.id;
+    this.save();
   }
 
   // ── Confirmação antes de excluir/fechar ────────────────────────────────────
@@ -609,6 +716,21 @@ class AppStore {
   setAskWorktree(v: boolean): void {
     this.settings.askWorktree = v;
     this.saveSettings();
+  }
+
+  /** Largura da sidebar (arrastar) — salva com debounce. */
+  setSidebarWidth(px: number): void {
+    this.settings.sidebarWidth = Math.max(160, Math.min(560, Math.round(px)));
+    this.saveSettingsDebounced();
+  }
+  setEditorPanelWidth(px: number): void {
+    this.settings.editorPanelWidth = Math.max(140, Math.min(600, Math.round(px)));
+    this.saveSettingsDebounced();
+  }
+  private settingsTimer: ReturnType<typeof setTimeout> | undefined;
+  saveSettingsDebounced(): void {
+    clearTimeout(this.settingsTimer);
+    this.settingsTimer = setTimeout(() => this.saveSettings(), 400);
   }
 
   selectTab(id: string): void {

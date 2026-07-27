@@ -116,6 +116,23 @@
   let editorHost = $state<HTMLElement>();
   let editorView: EditorView | undefined;
 
+  // Painel lateral (árvore/mudanças) redimensionável.
+  let paneEl = $state<HTMLElement>();
+  let resizingPanel = $state(false);
+  function startPanelResize(e: PointerEvent) {
+    e.preventDefault();
+    resizingPanel = true;
+    const left = paneEl?.getBoundingClientRect().left ?? 0;
+    const move = (ev: PointerEvent) => app.setEditorPanelWidth(ev.clientX - left);
+    const up = () => {
+      resizingPanel = false;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
   const statusMap = $derived.by(() => {
     const m: Record<string, string> = {};
     if (gs?.root) for (const f of gs.files) m[`${gs.root}/${f.path}`] = f.status;
@@ -301,7 +318,7 @@
   }
 </script>
 
-<div class="files">
+<div class="files" bind:this={paneEl}>
   <!-- Barra git -->
   <div class="gitbar">
     {#if gs?.isRepo}
@@ -343,7 +360,7 @@
     {/if}
   </div>
 
-  <div class="body">
+  <div class="body" style="--pw:{app.settings.editorPanelWidth}px">
     <div class="sidepanel">
       {#if tab === "files"}
         {#each rootEntries as entry (entry.path)}
@@ -401,6 +418,9 @@
         {/each}
       {/if}
     </div>
+
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="pdivider" class:dragging={resizingPanel} onpointerdown={startPanelResize}></div>
 
     <div class="main">
       <!-- Abas dos arquivos abertos (estilo VSCodium) -->
@@ -635,13 +655,30 @@
   .body {
     flex: 1 1 auto;
     display: grid;
-    grid-template-columns: 240px 1fr;
+    grid-template-columns: var(--pw, 240px) 1px 1fr;
     min-height: 0;
   }
   .sidepanel {
     overflow-y: auto;
-    border-right: 1px solid #2a2a2a;
     padding: 4px 0;
+    min-width: 0;
+  }
+  .pdivider {
+    position: relative;
+    background: #2a2a2a;
+    cursor: col-resize;
+  }
+  .pdivider::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -3px;
+    right: -3px;
+  }
+  .pdivider:hover,
+  .pdivider.dragging {
+    background: #007acc;
   }
   .change {
     display: flex;

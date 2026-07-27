@@ -12,6 +12,7 @@
   } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { PROFILES, profile } from "../lib/profiles";
+  import ToolIcon from "./ToolIcon.svelte";
   import type { SplitDirection } from "../lib/types";
 
   const ws = $derived(app.activeWorkspace);
@@ -25,9 +26,8 @@
   <!-- Novo terminal por perfil -->
   <div class="group profiles">
     {#each PROFILES as p (p.id)}
-      {@const Icon = p.icon}
       <button class="prof" style="--c:{p.color}" title={"Nova sessão " + p.label} onclick={() => app.startNewSession(p.id)}>
-        <Icon size={16} />
+        <ToolIcon id={p.id} size={17} />
       </button>
     {/each}
   </div>
@@ -41,9 +41,10 @@
           class:active={tab.id === ws.activeTabId}
           style="--c:{profile(tab.panes[0]?.toolProfileId ?? 'shell').color}"
           onclick={() => app.selectTab(tab.id)}
+          oncontextmenu={(e) => app.openContextMenu(e, app.tabMenu(tab.id))}
           title={tab.title}
         >
-          <span class="d"></span>{tab.title}
+          <span class="ti"><ToolIcon id={tab.panes[0]?.toolProfileId ?? "shell"} size={13} /></span>{tab.title}
         </button>
       {/each}
     {/if}
@@ -127,11 +128,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .tab .d {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--c);
+  .tab .ti {
+    display: flex;
+    color: var(--c);
     flex: 0 0 auto;
   }
   .tab.active {

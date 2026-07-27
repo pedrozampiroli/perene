@@ -2,10 +2,10 @@
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
   import GitWidget from "./GitWidget.svelte";
+  import ToolIcon from "./ToolIcon.svelte";
 
   const tab = $derived(app.activeTab);
   const prof = $derived(profile(tab?.panes[0]?.toolProfileId ?? "shell"));
-  const Icon = $derived(prof.icon);
 </script>
 
 <div class="topbar">
@@ -15,7 +15,7 @@
     {/if}
     {#if tab}
       <span class="sl">›</span>
-      <span class="ic" style="color:{prof.color}"><Icon size={13} /></span>
+      <span class="ic" style="color:{prof.color}"><ToolIcon id={tab.panes[0]?.toolProfileId ?? "shell"} size={13} /></span>
       <span class="tb">{tab.title}</span>
     {/if}
   </div>

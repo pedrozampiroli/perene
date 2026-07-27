@@ -23,10 +23,22 @@ pub struct Settings {
     /// Perguntar sobre criar worktree isolada ao abrir nova sessão.
     #[serde(default = "default_true")]
     pub ask_worktree: bool,
+    /// Largura da sidebar em px (arrastável).
+    #[serde(default = "default_sidebar_width")]
+    pub sidebar_width: u32,
+    /// Largura do painel lateral do editor (árvore/mudanças) em px.
+    #[serde(default = "default_editor_panel_width")]
+    pub editor_panel_width: u32,
 }
 
 fn default_true() -> bool {
     true
+}
+fn default_sidebar_width() -> u32 {
+    240
+}
+fn default_editor_panel_width() -> u32 {
+    240
 }
 
 impl Default for Settings {
@@ -37,6 +49,8 @@ impl Default for Settings {
             webgl: false,
             shell: String::new(),
             ask_worktree: true,
+            sidebar_width: default_sidebar_width(),
+            editor_panel_width: default_editor_panel_width(),
         }
     }
 }
@@ -86,6 +100,8 @@ mod tests {
             webgl: true,
             shell: "/bin/bash".into(),
             ask_worktree: false,
+            sidebar_width: 300,
+            editor_panel_width: 280,
         };
         store.save(&s).unwrap();
         assert_eq!(store.load().unwrap(), s);

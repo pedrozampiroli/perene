@@ -66,17 +66,40 @@
     overflow: hidden;
   }
   .divider {
-    flex: 0 0 6px;
+    position: relative;
+    flex: 0 0 4px;
     background: #2a2a2a;
+    z-index: 5;
+  }
+  /* Área de clique maior que a linha (mais fácil de pegar). */
+  .divider::after {
+    content: "";
+    position: absolute;
+    inset: 0;
   }
   .divider.horizontal {
     cursor: col-resize;
   }
+  .divider.horizontal::after {
+    left: -3px;
+    right: -3px;
+  }
   .divider.vertical {
     cursor: row-resize;
+  }
+  .divider.vertical::after {
+    top: -3px;
+    bottom: -3px;
   }
   .divider:hover,
   .dragging .divider {
     background: #007acc;
+  }
+  /* Enquanto arrasta, não seleciona texto nem deixa o terminal capturar. */
+  .split.dragging {
+    user-select: none;
+  }
+  .split.dragging :global(.xterm) {
+    pointer-events: none;
   }
 </style>

@@ -67,6 +67,8 @@ export interface Settings {
   webgl: boolean;
   shell: string; // "" = padrão do sistema
   askWorktree: boolean;
+  sidebarWidth: number;
+  editorPanelWidth: number;
 }
 
 export interface ShellOption {
