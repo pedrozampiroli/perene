@@ -89,8 +89,16 @@ fn platform_shell(shell_override: Option<&str>, command: Option<&str>) -> Comman
             cmd.arg("-c");
             cmd.arg(format!("{c}; exec \"{prog}\" -l -i"));
         }
+    } else if lower.ends_with("cmd.exe") {
+        // /K roda o comando e SEGURA o prompt — sem isso o pane fecharia sozinho
+        // ao fim do `claude`/`codex`.
+        if let Some(c) = command {
+            cmd.arg("/K");
+            cmd.arg(c);
+        }
     }
-    // wsl.exe / cmd.exe: sem args extras (abrem o shell padrão).
+    // Outros (wsl.exe etc.): sem args extras — abrem o shell padrão. Um `command`
+    // de perfil não é injetável aí sem saber a sintaxe do shell de destino.
     cmd
 }
 

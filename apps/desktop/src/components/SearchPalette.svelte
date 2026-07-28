@@ -4,6 +4,7 @@
   import { Search, FileText, Replace } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { t } from "../lib/i18n.svelte";
+  import { baseName } from "../lib/paths";
 
   let sel = $state(0);
   let debounce: ReturnType<typeof setTimeout>;
@@ -29,7 +30,7 @@
         i = idx + 1;
       }
       if (score < 0) continue;
-      if (s.split("/").pop()!.includes(query)) score += 40; // nome do arquivo bate
+      if (baseName(s).includes(query)) score += 40; // nome do arquivo bate
       scored.push({ f, score });
     }
     scored.sort((a, b) => b.score - a.score || a.f.length - b.f.length);
@@ -110,7 +111,7 @@
         {:else if p.mode === "quickOpen"}
           {#each matches as f, i (f)}
             <button class="row" class:sel={i === sel} onclick={() => choose(i)} onmouseenter={() => (sel = i)}>
-              <span class="name">{f.split("/").pop()}</span>
+              <span class="name">{baseName(f)}</span>
               <span class="path">{f}</span>
             </button>
           {:else}

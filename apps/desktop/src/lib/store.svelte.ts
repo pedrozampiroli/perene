@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "./api";
 import { i18n, detectLocale, t } from "./i18n.svelte";
+import { baseName, isInWorktree } from "./paths";
 import { buildCommand, needsSessionId } from "./profiles";
 import type {
   LayoutNode,
@@ -325,7 +326,7 @@ class AppStore {
     const dir = await this.pickDirectory(m.directory ?? this.home);
     if (dir) {
       m.directory = dir;
-      if (!m.name.trim()) m.name = dir.split("/").filter(Boolean).pop() ?? "";
+      if (!m.name.trim()) m.name = baseName(dir);
     }
   }
   confirmNameModal(): void {
@@ -716,8 +717,8 @@ class AppStore {
     if (!ws) return;
     const cwd = dir ?? this.currentDir;
     const pane = this.makeFilesPane(cwd);
-    const label = cwd.split("/").filter(Boolean).pop() ?? "editor";
-    const inWorktree = cwd.includes("/.perene/worktrees/");
+    const label = baseName(cwd) || "editor";
+    const inWorktree = isInWorktree(cwd);
     const tab: Tab = {
       id: newId("tab"),
       folderId: this.activeTab?.folderId ?? null,
@@ -840,7 +841,7 @@ class AppStore {
     if (s.mode === "existing") {
       if (!s.existingPath) return;
       const wt = s.worktrees.find((w) => w.path === s.existingPath);
-      const label = wt?.branch || s.existingPath.split("/").filter(Boolean).pop() || "worktree";
+      const label = wt?.branch || baseName(s.existingPath) || "worktree";
       this.newSession = null;
       this.createTabInDir(s.profileId, s.existingPath, `⑂ ${label}`);
       return;

@@ -104,19 +104,38 @@ scrollback/, paste/, usage-cache.json).
    screenshot — filtre por `target/.../perene-desktop`.
 6. **Testes NUNCA tocam estado real**: `PERENE2_STATE_DIR` (env) redireciona
    tudo; stores recebem o caminho por injeção. Mantenha isso.
+7. **Teste cross-platform ou o Windows apodrece calado.** `tests/protocol.rs`
+   era `#![cfg(unix)]`, então o CI ficava verde no Windows testando NADA do IPC
+   — e o app lá abria terminais que não recebiam tecla. Hoje o teste roda nas 3
+   plataformas (módulo `platform` no topo do arquivo isola shell/endpoint).
+   Duas armadilhas do named pipe que motivam o código como está:
+   - **I/O sobreposto é obrigatório.** Handle síncrono serializa as operações no
+     mesmo file object: a leitura bloqueada segurando o socket travaria a
+     escrita do output dos PTYs (= terminal mudo).
+   - **Uma instância do pipe atende UM cliente**: o `accept` cria a próxima
+     instância a cada conexão.
+   Single-instance no Windows é abertura com `share_mode(0)` no lockfile (o
+   `flock` do unix), e o daemon sobe com `DETACHED_PROCESS` (equivalente ao
+   `setsid`, e sem janelinha preta piscando).
 
 ## Limitações conhecidas / próximos passos
 
-- **Windows/Linux**: compilam no CI, mas o IPC do daemon é `#[cfg(unix)]`
-  (unix socket). Windows precisa de named pipes (`server.rs`/`client.rs` têm
-  stub que retorna erro). WebKitGTK (Linux) pode precisar de fallback do
-  renderer. mac é a plataforma completa.
+- **Windows**: funcional desde 2026-07-28 — o IPC do daemon virou named pipe
+  (`crates/perene-daemon/src/winpipe.rs`). Antes disso `run`/`connect` eram
+  stubs que retornavam erro: o app abria o pane, o `terminal_spawn` falhava em
+  silêncio e **não dava para digitar em terminal nenhum**. Detalhes em
+  "Gotchas" #7.
+- **Linux**: compila no CI e o IPC é o mesmo do mac (unix socket), mas nunca foi
+  rodado de verdade. WebKitGTK pode precisar de fallback do renderer.
 - **cwd tracking** (atualizar `pane.workingDirectory` via OSC 7) não foi
   implementado — o cwd fica o do spawn. Debounce de save já está pronto pra isso.
 - **Ícone**: já é o ícone real do Perene (importado da v1).
-- **Fila de próximos passos sugerida**: (1) named pipes no Windows (o IPC do
-  daemon ainda é `#[cfg(unix)]`); (2) cwd tracking (OSC 7); (3) gerar release
-  com artefatos (o job `bundle` roda em tags `v*` ou dispatch manual).
+- **Busca global no Windows sem ripgrep**: `search_in_files` usa `rg` e, sem ele,
+  cai no `grep -rn` — que não existe no Windows. Sem `rg` instalado, o ⌘⇧F
+  devolve vazio (não quebra, só não acha nada). Falta um fallback nativo.
+- **Fila de próximos passos sugerida**: (1) cwd tracking (OSC 7); (2) fallback
+  nativo da busca global; (3) gerar release com artefatos (o job `bundle` roda
+  em tags `v*` ou dispatch manual).
 
 ## Referências da v1 (não mexer — `~/Projects/tool/zampimanager`)
 

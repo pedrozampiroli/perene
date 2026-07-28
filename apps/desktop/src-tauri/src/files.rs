@@ -152,8 +152,11 @@ pub fn search_in_files(
         .lines()
         .take(max)
         .filter_map(|line| {
-            // formato: ./caminho:LINHA:texto
-            let rest = line.strip_prefix("./").unwrap_or(line);
+            // formato: ./caminho:LINHA:texto (no Windows o rg emite `.\caminho`)
+            let rest = line
+                .strip_prefix("./")
+                .or_else(|| line.strip_prefix(".\\"))
+                .unwrap_or(line);
             let mut parts = rest.splitn(3, ':');
             let path = parts.next()?.to_string();
             let line_no: u32 = parts.next()?.parse().ok()?;

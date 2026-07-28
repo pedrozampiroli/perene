@@ -5,6 +5,7 @@
   import { PerenePane } from "../lib/terminal";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
+  import { baseName } from "../lib/paths";
   import FilesPane from "./FilesPane.svelte";
   import ToolIcon from "./ToolIcon.svelte";
 
@@ -17,7 +18,7 @@
   const isFiles = $derived(data?.kind === "files");
   const prof = $derived(profile(data?.toolProfileId ?? "shell"));
   const isActive = $derived(app.activePaneId === paneId);
-  const dirLabel = $derived((data?.workingDirectory ?? "").split("/").filter(Boolean).pop() ?? "~");
+  const dirLabel = $derived(baseName(data?.workingDirectory ?? "") || "~");
 
   onMount(() => {
     const p = app.findPane(paneId);

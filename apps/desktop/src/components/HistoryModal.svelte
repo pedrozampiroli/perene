@@ -5,6 +5,7 @@
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
   import { profile } from "../lib/profiles";
+  import { baseName } from "../lib/paths";
   import type { SessionRecord } from "../lib/types";
 
   let all = $state<SessionRecord[]>([]);
@@ -54,7 +55,7 @@
     return new Date(ms).toLocaleString("pt-BR", { dateStyle: "medium", timeStyle: "short" });
   }
   function projectName(path: string): string {
-    return path.split("/").filter(Boolean).pop() ?? path;
+    return baseName(path) || path;
   }
 </script>
 

@@ -4,20 +4,129 @@
 //! shell, mesmo processo vivo, scrollback preservado. Modelamos "fechar/reabrir"
 //! como desconectar um cliente e conectar outro; o PTY vive no daemon entre os dois.
 //!
+//! Roda nas TRÊS plataformas: no unix o transporte é o socket, no Windows é o
+//! named pipe. O módulo [`platform`] concentra tudo que difere (endpoint, shell,
+//! comandos) — o corpo dos testes é o mesmo. Isso é de propósito: o IPC do
+//! Windows já ficou quebrado sem ninguém perceber porque os testes eram
+//! `#![cfg(unix)]`.
+//!
 //! Lição #1: NADA toca `~/.perene2`. Tudo em diretório temporário injetado.
 
-#![cfg(unix)]
-
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use base64::Engine;
 use perene_protocol::{decode_line, encode_line, ClientMessage, DaemonMessage, SpawnRequest};
 
+use platform::Stream;
+
 const MARKER: &str = "PERENE_M1_MARK_42";
 const ALIVE: &str = "PERENE_ALIVE_99";
+
+/// Tudo que muda entre unix e Windows.
+mod platform {
+    use std::path::{Path, PathBuf};
+
+    #[cfg(unix)]
+    pub type Stream = std::os::unix::net::UnixStream;
+    #[cfg(windows)]
+    pub type Stream = perene_daemon::winpipe::PipeStream;
+
+    /// Endpoint IPC do daemon deste teste. Único por teste: os testes rodam em
+    /// paralelo na mesma máquina (e no Windows o pipe é global à sessão).
+    #[cfg(unix)]
+    pub fn endpoint(dir: &Path) -> PathBuf {
+        dir.join("daemon.sock")
+    }
+
+    #[cfg(windows)]
+    pub fn endpoint(_dir: &Path) -> PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static SEQ: AtomicU32 = AtomicU32::new(0);
+        let n = SEQ.fetch_add(1, Ordering::Relaxed);
+        PathBuf::from(format!(r"\\.\pipe\perene2-test-{}-{n}", std::process::id()))
+    }
+
+    #[cfg(unix)]
+    pub fn connect(endpoint: &Path) -> std::io::Result<Stream> {
+        Stream::connect(endpoint)
+    }
+
+    #[cfg(windows)]
+    pub fn connect(endpoint: &Path) -> std::io::Result<Stream> {
+        perene_daemon::winpipe::connect(endpoint)
+    }
+
+    pub fn split(stream: &Stream) -> std::io::Result<Stream> {
+        stream.try_clone()
+    }
+
+    /// Fecha a conexão de verdade (o daemon precisa ver EOF), destravando quem
+    /// estiver bloqueado lendo.
+    #[cfg(unix)]
+    pub fn shutdown(stream: &Stream) {
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+    }
+
+    #[cfg(windows)]
+    pub fn shutdown(stream: &Stream) {
+        stream.shutdown();
+    }
+
+    /// Shell hermético e rápido para os testes (evita `.zshrc`/profile pesado).
+    #[cfg(unix)]
+    pub fn test_shell() -> Option<String> {
+        Some("/bin/sh".to_string())
+    }
+
+    #[cfg(windows)]
+    pub fn test_shell() -> Option<String> {
+        Some(std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string()))
+    }
+
+    /// Comando que imprime `text` e devolve o prompt.
+    #[cfg(unix)]
+    pub fn echo_command(text: &str) -> String {
+        format!("printf '{text}\\n'")
+    }
+
+    #[cfg(windows)]
+    pub fn echo_command(text: &str) -> String {
+        format!("echo {text}")
+    }
+
+    /// Linha digitada no terminal já vivo (com o Enter da plataforma).
+    #[cfg(unix)]
+    pub fn typed_line(text: &str) -> String {
+        format!("echo {text}\n")
+    }
+
+    #[cfg(windows)]
+    pub fn typed_line(text: &str) -> String {
+        format!("echo {text}\r")
+    }
+
+    /// Shell + comando que imprimem `ENVCHECK=[a][b][c]` com as três vars de
+    /// harness. Precisa de um shell que expanda variável indefinida como vazio —
+    /// o `cmd.exe` deixaria `%VAR%` literal, então no Windows usamos PowerShell.
+    #[cfg(unix)]
+    pub fn env_probe() -> (Option<String>, String) {
+        (
+            Some("/bin/sh".to_string()),
+            "printf 'ENVCHECK=[%s][%s][%s]\\n' \"$CLAUDE_CODE_CHILD_SESSION\" \"$CLAUDE_CODE_SESSION_ID\" \"$CLAUDECODE\"".to_string(),
+        )
+    }
+
+    #[cfg(windows)]
+    pub fn env_probe() -> (Option<String>, String) {
+        (
+            Some("powershell.exe".to_string()),
+            "Write-Host ENVCHECK=[$env:CLAUDE_CODE_CHILD_SESSION][$env:CLAUDE_CODE_SESSION_ID][$env:CLAUDECODE]".to_string(),
+        )
+    }
+}
 
 fn b64_decode(s: &str) -> Vec<u8> {
     base64::engine::general_purpose::STANDARD
@@ -26,17 +135,38 @@ fn b64_decode(s: &str) -> Vec<u8> {
 }
 
 /// Cliente de linha com timeout, para os testes não travarem.
+///
+/// A leitura roda numa thread própria alimentando um canal: assim o timeout é do
+/// `recv_timeout` e não depende de o transporte suportar `set_read_timeout` (o
+/// named pipe não suporta).
 struct LineClient {
-    stream: UnixStream,
+    stream: Stream,
+    rx: mpsc::Receiver<Vec<u8>>,
     buf: Vec<u8>,
 }
 
 impl LineClient {
-    fn connect(path: &Path) -> std::io::Result<Self> {
-        let stream = UnixStream::connect(path)?;
-        stream.set_read_timeout(Some(Duration::from_millis(150)))?;
+    fn connect(endpoint: &Path) -> std::io::Result<Self> {
+        let stream = platform::connect(endpoint)?;
+        let mut read_side = platform::split(&stream)?;
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut tmp = [0u8; 8192];
+            loop {
+                match read_side.read(&mut tmp) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if tx.send(tmp[..n].to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
         Ok(Self {
             stream,
+            rx,
             buf: Vec::new(),
         })
     }
@@ -57,20 +187,13 @@ impl LineClient {
                 }
                 return decode_line(&text).ok();
             }
-            if Instant::now() >= deadline {
+            let now = Instant::now();
+            if now >= deadline {
                 return None;
             }
-            let mut tmp = [0u8; 8192];
-            match self.stream.read(&mut tmp) {
-                Ok(0) => return None,
-                Ok(n) => self.buf.extend_from_slice(&tmp[..n]),
-                Err(ref e)
-                    if e.kind() == std::io::ErrorKind::WouldBlock
-                        || e.kind() == std::io::ErrorKind::TimedOut =>
-                {
-                    continue;
-                }
-                Err(_) => return None,
+            match self.rx.recv_timeout(deadline - now) {
+                Ok(chunk) => self.buf.extend_from_slice(&chunk),
+                Err(_) => return None, // timeout ou conexão encerrada
             }
         }
     }
@@ -119,42 +242,57 @@ impl LineClient {
     }
 }
 
-fn wait_for_socket(path: &Path, timeout: Duration) {
+impl Drop for LineClient {
+    fn drop(&mut self) {
+        // Sem isto a thread leitora seguraria a conexão aberta e o daemon nunca
+        // veria o cliente sair — justo o que o teste de reattach quer exercitar.
+        platform::shutdown(&self.stream);
+    }
+}
+
+fn wait_for_daemon(endpoint: &Path, timeout: Duration) {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if UnixStream::connect(path).is_ok() {
+        if platform::connect(endpoint).is_ok() {
             return;
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-    panic!("socket do daemon não apareceu em {}", path.display());
+    panic!("daemon não subiu em {}", endpoint.display());
+}
+
+/// Sobe um daemon isolado (endpoint/lock/scrollback em tempdir) e espera ficar
+/// pronto.
+fn start_daemon(dir: &Path) -> std::path::PathBuf {
+    let endpoint = platform::endpoint(dir);
+    let config = perene_daemon::Config {
+        socket_path: endpoint.clone(),
+        lock_path: dir.join("daemon.lock"),
+        scrollback_dir: dir.join("scrollback"),
+        scrollback_cap: 1024 * 1024,
+    };
+    // Thread (morre com o processo de teste no fim).
+    std::thread::spawn(move || {
+        let _ = perene_daemon::run(config);
+    });
+    wait_for_daemon(&endpoint, Duration::from_secs(5));
+    endpoint
+}
+
+fn hello(client: &mut LineClient) {
+    client.send(&ClientMessage::Hello {
+        protocol_version: perene_daemon::PROTOCOL_VERSION,
+    });
 }
 
 #[test]
 fn spawn_attach_reattach_preserves_scrollback_and_process() {
-    // Shell hermético (evita sourcing pesado do .zshrc do usuário no teste).
-    std::env::set_var("SHELL", "/bin/sh");
-
     let dir = tempfile::tempdir().unwrap();
-    let socket = dir.path().join("daemon.sock");
-    let config = perene_daemon::Config {
-        socket_path: socket.clone(),
-        lock_path: dir.path().join("daemon.lock"),
-        scrollback_dir: dir.path().join("scrollback"),
-        scrollback_cap: 1024 * 1024,
-    };
-
-    // Sobe o daemon numa thread (morre com o processo de teste no fim).
-    std::thread::spawn(move || {
-        let _ = perene_daemon::run(config);
-    });
-    wait_for_socket(&socket, Duration::from_secs(5));
+    let endpoint = start_daemon(dir.path());
 
     // ── Cliente 1: cria o pane e vê o marcador ────────────────────────────
-    let mut c1 = LineClient::connect(&socket).unwrap();
-    c1.send(&ClientMessage::Hello {
-        protocol_version: perene_daemon::PROTOCOL_VERSION,
-    });
+    let mut c1 = LineClient::connect(&endpoint).unwrap();
+    hello(&mut c1);
     assert!(
         matches!(
             c1.next_msg(Instant::now() + Duration::from_secs(2)),
@@ -169,14 +307,14 @@ fn spawn_attach_reattach_preserves_scrollback_and_process() {
         cols: 80,
         rows: 24,
         cwd: Some(dir.path().to_string_lossy().to_string()),
-        command: Some(format!("printf '{MARKER}\\n'")),
-        shell: None,
+        command: Some(platform::echo_command(MARKER)),
+        shell: platform::test_shell(),
     }));
     c1.send(&ClientMessage::Attach {
         pane_id: pane_id.clone(),
     });
     assert!(
-        c1.wait_for_output(MARKER, Duration::from_secs(10)),
+        c1.wait_for_output(MARKER, Duration::from_secs(20)),
         "cliente 1 devia ver o marcador do comando inicial"
     );
 
@@ -185,10 +323,8 @@ fn spawn_attach_reattach_preserves_scrollback_and_process() {
     std::thread::sleep(Duration::from_millis(200));
 
     // ── "Reabre a janela": cliente 2 atacha e recebe o scrollback. ────────
-    let mut c2 = LineClient::connect(&socket).unwrap();
-    c2.send(&ClientMessage::Hello {
-        protocol_version: perene_daemon::PROTOCOL_VERSION,
-    });
+    let mut c2 = LineClient::connect(&endpoint).unwrap();
+    hello(&mut c2);
     let _ = c2.next_msg(Instant::now() + Duration::from_secs(2)); // Welcome
     c2.send(&ClientMessage::Attach {
         pane_id: pane_id.clone(),
@@ -201,10 +337,10 @@ fn spawn_attach_reattach_preserves_scrollback_and_process() {
     // ── Mesmo processo vivo: mandamos um comando e vemos a resposta. ───────
     c2.send(&ClientMessage::Write {
         pane_id: pane_id.clone(),
-        data_b64: base64::engine::general_purpose::STANDARD.encode(format!("echo {ALIVE}\n")),
+        data_b64: base64::engine::general_purpose::STANDARD.encode(platform::typed_line(ALIVE)),
     });
     assert!(
-        c2.wait_for_output(ALIVE, Duration::from_secs(10)),
+        c2.wait_for_output(ALIVE, Duration::from_secs(20)),
         "o shell original devia continuar vivo e responder após o reattach"
     );
 
@@ -228,30 +364,18 @@ fn spawn_attach_reattach_preserves_scrollback_and_process() {
 /// nascer com o ambiente limpo.
 #[test]
 fn spawned_terminals_do_not_inherit_harness_session_env() {
-    std::env::set_var("SHELL", "/bin/sh");
     std::env::set_var("CLAUDE_CODE_CHILD_SESSION", "1");
     std::env::set_var("CLAUDE_CODE_SESSION_ID", "deadbeef");
     std::env::set_var("CLAUDECODE", "1");
 
     let dir = tempfile::tempdir().unwrap();
-    let socket = dir.path().join("daemon.sock");
-    let config = perene_daemon::Config {
-        socket_path: socket.clone(),
-        lock_path: dir.path().join("daemon.lock"),
-        scrollback_dir: dir.path().join("scrollback"),
-        scrollback_cap: 1024 * 1024,
-    };
-    std::thread::spawn(move || {
-        let _ = perene_daemon::run(config);
-    });
-    wait_for_socket(&socket, Duration::from_secs(5));
+    let endpoint = start_daemon(dir.path());
 
-    let mut c = LineClient::connect(&socket).unwrap();
-    c.send(&ClientMessage::Hello {
-        protocol_version: perene_daemon::PROTOCOL_VERSION,
-    });
+    let mut c = LineClient::connect(&endpoint).unwrap();
+    hello(&mut c);
     let _ = c.next_msg(Instant::now() + Duration::from_secs(2));
 
+    let (shell, command) = platform::env_probe();
     let pane_id = "pane_env".to_string();
     c.send(&ClientMessage::Spawn(SpawnRequest {
         pane_id: pane_id.clone(),
@@ -259,18 +383,15 @@ fn spawned_terminals_do_not_inherit_harness_session_env() {
         rows: 24,
         cwd: Some(dir.path().to_string_lossy().to_string()),
         // Imprime as vars: têm que sair VAZIAS dentro do PTY.
-        command: Some(
-            "printf 'ENVCHECK=[%s][%s][%s]\\n' \"$CLAUDE_CODE_CHILD_SESSION\" \"$CLAUDE_CODE_SESSION_ID\" \"$CLAUDECODE\""
-                .to_string(),
-        ),
-        shell: None,
+        command: Some(command),
+        shell,
     }));
     c.send(&ClientMessage::Attach {
         pane_id: pane_id.clone(),
     });
 
     assert!(
-        c.wait_for_output("ENVCHECK=[][][]", Duration::from_secs(10)),
+        c.wait_for_output("ENVCHECK=[][][]", Duration::from_secs(30)),
         "o terminal herdou vars de sessão do harness (transcript saving quebraria)"
     );
 }
@@ -282,7 +403,10 @@ fn single_instance_lock_blocks_second_daemon() {
 
     let g1 = perene_daemon::acquire_single_instance(&lock).expect("primeiro lock deve pegar");
     let g2 = perene_daemon::acquire_single_instance(&lock);
-    assert!(g2.is_err(), "segundo daemon NUNCA pode adquirir o lock (lição #2)");
+    assert!(
+        g2.is_err(),
+        "segundo daemon NUNCA pode adquirir o lock (lição #2)"
+    );
 
     drop(g1);
     let g3 = perene_daemon::acquire_single_instance(&lock);
