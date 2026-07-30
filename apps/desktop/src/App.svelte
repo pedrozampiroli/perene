@@ -13,6 +13,7 @@
   import NewSessionModal from "./components/NewSessionModal.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
   import SearchPalette from "./components/SearchPalette.svelte";
+  import Onboarding from "./components/Onboarding.svelte";
 
   const isMac = navigator.userAgent.toLowerCase().includes("mac");
 
@@ -133,6 +134,7 @@
   <NewSessionModal />
   <ContextMenu />
   <SearchPalette />
+  <Onboarding />
 {:else}
   <div class="splash">Perene…</div>
 {/if}

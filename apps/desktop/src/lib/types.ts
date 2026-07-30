@@ -70,6 +70,7 @@ export interface Settings {
   sidebarWidth: number;
   editorPanelWidth: number;
   locale: string; // "" = seguir o sistema
+  onboardingDone: boolean;
 }
 
 export interface ShellOption {

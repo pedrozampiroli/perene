@@ -170,6 +170,7 @@ class AppStore {
     sidebarWidth: 240,
     editorPanelWidth: 240,
     locale: "",
+    onboardingDone: false,
   });
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
@@ -199,6 +200,21 @@ class AppStore {
     i18n.setLocale(s.locale || detectLocale());
     this.syncActivePane();
     this.loaded = true;
+    // Primeira execução → mostra as boas-vindas.
+    if (!s.onboardingDone) this.onboardingOpen = true;
+  }
+
+  /** Onboarding: aberto na 1ª execução e revisível pelas configurações. */
+  onboardingOpen = $state(false);
+  openOnboarding(): void {
+    this.onboardingOpen = true;
+  }
+  finishOnboarding(): void {
+    this.onboardingOpen = false;
+    if (!this.settings.onboardingDone) {
+      this.settings.onboardingDone = true;
+      this.saveSettings();
+    }
   }
 
   setLocale(code: string): void {
