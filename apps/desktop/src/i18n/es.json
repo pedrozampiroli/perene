@@ -202,12 +202,18 @@
   "onb.profiles.body": "Elige una herramienta en la barra inferior. Cada una arranca en un login shell, así que tu PATH, alias y perfil son idénticos a los de tu terminal.",
   "onb.profiles.tip": "En un repo git, Perene ofrece ejecutar la sesión en un worktree aislado — el agente trabaja en su propia rama sin tocar tu árbol.",
   "onb.organize.title": "Organiza tu trabajo",
-  "onb.organize.body": "Los workspaces contienen carpetas, las carpetas pestañas, y cada pestaña se divide en paneles. Arrastra pestañas entre carpetas y los divisores para redimensionar.",
-  "onb.organize.tip": "Clic derecho en cualquier elemento de la barra lateral para el menú completo: nueva sesión, renombrar, definir directorio, mover, eliminar.",
+  "onb.organize.body": "Los workspaces contienen carpetas, las carpetas pestañas. Arrastra pestañas entre carpetas para mantener juntas las sesiones relacionadas.",
+  "onb.organize.tip": "Clic derecho en cualquier elemento de aquí para el menú completo: nueva sesión, renombrar, definir directorio, mover, eliminar.",
   "onb.editor.title": "Editor y git, integrados",
   "onb.editor.body": "Abre el editor para navegar archivos, editar con resaltado de sintaxis, revisar diffs lado a lado, hacer commit y push — sin salir de la app.",
   "onb.editor.tip": "La barra superior siempre muestra la rama del panel activo, con fetch, pull, push y pull requests a un clic.",
   "onb.shortcuts.title": "Muévete rápido",
   "onb.shortcuts.body": "Los atajos que ya conoces de tu editor también funcionan aquí.",
-  "onb.shortcuts.tip": "Configura idioma, shell y tamaño de fuente en los ajustes (⌘,)."
+  "onb.shortcuts.tip": "Configura idioma, shell y tamaño de fuente en los ajustes (⌘,).",
+  "onb.splits.title": "Divide la vista",
+  "onb.splits.body": "Divide cualquier panel a la derecha o abajo, o usa un preset de diseño — columnas, filas o cuadrícula. Observa a un agente trabajar mientras escribes en otro.",
+  "onb.splits.tip": "Arrastra el divisor entre paneles para redimensionar; la proporción se guarda.",
+  "onb.git.title": "Git siempre a la vista",
+  "onb.git.body": "La rama del panel activo está aquí arriba, con el estado sin confirmar y los contadores ahead/behind. Haz clic para cambiar o crear rama, fetch, pull, push o abrir un pull request.",
+  "onb.git.tip": "Sigue al panel activo — así una sesión en un worktree muestra la rama de ese worktree."
 }

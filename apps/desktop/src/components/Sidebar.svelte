@@ -56,7 +56,7 @@
     <span>{t("sidebar.workspaces")}</span>
     <button class="add" title={t("sidebar.newWorkspace")} onclick={() => app.openNewWorkspaceModal()}><Plus size={15} /></button>
   </div>
-  <div class="workspaces">
+  <div class="workspaces" data-tour="workspaces">
     {#each app.manifest.workspaces as w (w.id)}
       <div
         class="ws-row"
@@ -88,6 +88,7 @@
 
   <div
     class="tree"
+    data-tour="tabs"
     class:over={overFolder === "__root__"}
     ondragover={(e) => allowDrop(e, null)}
     ondragleave={() => (overFolder = null)}

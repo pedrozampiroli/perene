@@ -202,12 +202,18 @@
   "onb.profiles.body": "Pick a tool in the bottom bar. Each one launches in a login shell, so your PATH, aliases and profile are exactly like your terminal.",
   "onb.profiles.tip": "In a git repo, Perene offers to run the session in an isolated worktree — the agent works on its own branch without touching your tree.",
   "onb.organize.title": "Organize your work",
-  "onb.organize.body": "Workspaces hold folders, folders hold tabs, and each tab can be split into panes. Drag tabs between folders, drag the dividers to resize.",
-  "onb.organize.tip": "Right-click anything in the sidebar for the full menu: new session, rename, set directory, move, delete.",
+  "onb.organize.body": "Workspaces hold folders, folders hold tabs. Drag tabs between folders to keep related sessions together.",
+  "onb.organize.tip": "Right-click anything here for the full menu: new session, rename, set directory, move, delete.",
   "onb.editor.title": "Editor and git, built in",
   "onb.editor.body": "Open the editor to browse files, edit with syntax highlighting, review side-by-side diffs, commit and push — without leaving the app.",
   "onb.editor.tip": "The title bar always shows the branch of the active pane, with fetch, pull, push and pull requests one click away.",
   "onb.shortcuts.title": "Move fast",
   "onb.shortcuts.body": "The shortcuts you already know from your editor work here too.",
-  "onb.shortcuts.tip": "Set your language, shell and font size in Settings (⌘,)."
+  "onb.shortcuts.tip": "Set your language, shell and font size in Settings (⌘,).",
+  "onb.splits.title": "Split your view",
+  "onb.splits.body": "Split any pane to the right or below, or apply a layout preset — columns, rows or a grid. Watch an agent work while you type in another.",
+  "onb.splits.tip": "Drag the divider between panes to resize; the proportion is remembered.",
+  "onb.git.title": "Git is always in sight",
+  "onb.git.body": "The current branch of the active pane lives up here, with dirty state and ahead/behind counts. Click it to switch or create a branch, fetch, pull, push or open a pull request.",
+  "onb.git.tip": "It follows the active pane — so a session running in a worktree shows that worktree's branch."
 }
