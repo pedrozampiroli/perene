@@ -96,6 +96,8 @@ export class PerenePane {
   private resizeObserver?: ResizeObserver;
   private container?: HTMLElement;
   private disposed = false;
+  /** Já reportamos falha neste pane? Evita repetir o aviso a cada tecla. */
+  private broken = false;
 
   constructor(paneId: string, fontSize = 13) {
     this.paneId = paneId;
@@ -147,16 +149,22 @@ export class PerenePane {
       }),
     );
 
-    await invoke("terminal_spawn", {
-      req: {
-        paneId: this.paneId,
-        cols: this.term.cols,
-        rows: this.term.rows,
-        cwd: opts.cwd ?? null,
-        command: opts.command ?? null,
-        shell: opts.shell ?? null,
-      },
-    });
+    try {
+      await invoke("terminal_spawn", {
+        req: {
+          paneId: this.paneId,
+          cols: this.term.cols,
+          rows: this.term.rows,
+          cwd: opts.cwd ?? null,
+          command: opts.command ?? null,
+          shell: opts.shell ?? null,
+        },
+      });
+    } catch (err) {
+      // Sem isto o pane fica um retângulo preto mudo: nada aparece e digitar não
+      // faz nada. O erro do daemon TEM que chegar ao usuário.
+      this.reportBroken(t("terminal.spawnFailed"), err);
+    }
 
     this.resizeObserver = new ResizeObserver(() => this.safeFit());
     this.resizeObserver.observe(container);
@@ -229,7 +237,17 @@ export class PerenePane {
   };
 
   private send(data: string): void {
-    void invoke("terminal_write", { paneId: this.paneId, data });
+    void invoke("terminal_write", { paneId: this.paneId, data }).catch((err) =>
+      this.reportBroken(t("terminal.writeFailed"), err),
+    );
+  }
+
+  /** Escreve o erro no próprio terminal (uma vez só) em vez de sumir com ele. */
+  private reportBroken(message: string, err: unknown): void {
+    if (this.broken || this.disposed) return;
+    this.broken = true;
+    const detail = err instanceof Error ? err.message : String(err);
+    this.term.write(`\r\n\x1b[31m${message}\x1b[0m\r\n\x1b[90m${detail}\x1b[0m\r\n`);
   }
 
   private safeFit(): void {

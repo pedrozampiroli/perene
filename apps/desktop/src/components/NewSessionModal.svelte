@@ -3,6 +3,7 @@
   import { GitBranch, FolderOpen, FolderGit2 } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
+  import { baseName } from "../lib/paths";
 
   const prof = $derived(app.newSession ? profile(app.newSession.profileId) : profile("shell"));
 
@@ -41,7 +42,7 @@
               <span>{t("session.worktree")}</span>
               <select bind:value={s.existingPath}>
                 {#each s.worktrees as w (w.path)}
-                  <option value={w.path}>{w.branch || "(detached)"} — {w.path.split("/").slice(-1)[0]}</option>
+                  <option value={w.path}>{w.branch || "(detached)"} — {baseName(w.path)}</option>
                 {/each}
               </select>
             </label>

@@ -3,6 +3,7 @@
   import { Plus, FolderPlus, ChevronRight, ChevronDown, X, Folder, FolderOpen, FolderCog } from "@lucide/svelte";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
+  import { shortPath as shortenPath } from "../lib/paths";
   import ToolIcon from "./ToolIcon.svelte";
   import type { Tab } from "../lib/types";
 
@@ -10,8 +11,7 @@
 
   function shortPath(p?: string | null): string {
     if (!p) return t("sidebar.noDirectory");
-    const parts = p.split("/").filter(Boolean);
-    return parts.length <= 2 ? "/" + parts.join("/") : "…/" + parts.slice(-2).join("/");
+    return shortenPath(p);
   }
 
   // ── Drag & drop de abas ──────────────────────────────────────────────────

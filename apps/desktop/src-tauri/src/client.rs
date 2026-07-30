@@ -4,13 +4,25 @@
 //! IPC (JSON-lines). Se o daemon não estiver rodando, a UI o sobe (detached) e o
 //! adota; se já estiver, só conecta. O output do daemon é reemitido para a webview
 //! com os MESMOS eventos do M0 (`pty-output`/`pty-exit`) — o front não muda.
+//!
+//! Transporte: unix socket no mac/linux, named pipe no Windows
+//! (`perene_daemon::winpipe`). Só o "como conectar" é condicional — o resto do
+//! fluxo é o mesmo nas três plataformas.
 
-use std::io::Write;
+use std::io::{BufWriter, Read, Write};
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
-use perene_protocol::{encode_line, ClientMessage, SpawnRequest};
+use perene_daemon::Transport;
+use perene_protocol::{encode_line, ClientMessage, SpawnRequest, PROTOCOL_VERSION};
+
+/// Conexão com o daemon, por plataforma.
+#[cfg(unix)]
+type Stream = std::os::unix::net::UnixStream;
+#[cfg(windows)]
+type Stream = perene_daemon::winpipe::PipeStream;
 
 /// Conexão persistente com o daemon. `None` até o primeiro comando.
 #[derive(Default)]
@@ -30,19 +42,43 @@ impl DaemonClient {
         Ok(())
     }
 
+    /// Derruba a conexão corrente; o próximo `ensure` reconecta (ou ressuscita o
+    /// daemon). Chamado quando a leitura termina ou uma escrita falha.
+    fn drop_conn(&self) {
+        *self.conn.lock() = None;
+    }
+
     /// Envia uma mensagem. Sem conexão ainda (ex.: um resize disparado pelo fit()
     /// antes do primeiro spawn), vira no-op — o spawn é quem conecta e leva o
     /// tamanho corrente; não faz sentido explodir aqui.
     fn send(&self, msg: &ClientMessage) -> Result<(), String> {
+        self.send_inner(msg, false)
+    }
+
+    /// Igual, mas exige conexão. Usado no input do teclado: digitar num terminal
+    /// sem daemon tem que dar erro visível, não sumir em silêncio.
+    fn send_connected(&self, msg: &ClientMessage) -> Result<(), String> {
+        self.send_inner(msg, true)
+    }
+
+    fn send_inner(&self, msg: &ClientMessage, require_conn: bool) -> Result<(), String> {
+        let line = encode_line(msg).map_err(|e| e.to_string())?;
         let mut guard = self.conn.lock();
         let Some(writer) = guard.as_mut() else {
-            return Ok(());
+            return if require_conn {
+                Err("sem conexão com o daemon do Perene".into())
+            } else {
+                Ok(())
+            };
         };
-        let line = encode_line(msg).map_err(|e| e.to_string())?;
-        writer
+        let result = writer
             .write_all(line.as_bytes())
-            .map_err(|e| e.to_string())?;
-        writer.flush().map_err(|e| e.to_string())?;
+            .and_then(|_| writer.flush());
+        if let Err(e) = result {
+            // Conexão morta: descarta para o próximo spawn reconectar.
+            *guard = None;
+            return Err(e.to_string());
+        }
         Ok(())
     }
 }
@@ -52,16 +88,11 @@ fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
-// ── Transporte (unix: implementado; windows: stub que compila) ───────────────
+// ── Transporte ───────────────────────────────────────────────────────────────
 
-#[cfg(unix)]
 fn connect_and_start(app: &AppHandle) -> Result<Box<dyn Write + Send>, String> {
-    use std::io::BufWriter;
-
-    use perene_protocol::PROTOCOL_VERSION;
-
     let stream = connect_or_spawn_daemon()?;
-    let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
+    let read_stream = stream.split().map_err(|e| e.to_string())?;
     let app2 = app.clone();
     std::thread::spawn(move || read_loop(read_stream, app2));
 
@@ -77,13 +108,7 @@ fn connect_and_start(app: &AppHandle) -> Result<Box<dyn Write + Send>, String> {
     Ok(Box::new(writer))
 }
 
-#[cfg(windows)]
-fn connect_and_start(_app: &AppHandle) -> Result<Box<dyn Write + Send>, String> {
-    Err("cliente do daemon no Windows ainda não implementado (named pipes) — TODO M6".into())
-}
-
-#[cfg(unix)]
-fn read_loop(stream: std::os::unix::net::UnixStream, app: AppHandle) {
+fn read_loop<R: Read>(stream: R, app: AppHandle) {
     use std::io::{BufRead, BufReader};
 
     use tauri::Emitter;
@@ -115,29 +140,41 @@ fn read_loop(stream: std::os::unix::net::UnixStream, app: AppHandle) {
             _ => {}
         }
     }
-    // Conexão caiu (daemon morreu?). Auto-reconnect fica pro M4 (resume).
+    // Conexão caiu (daemon morreu?). Solta o writer morto: o próximo terminal
+    // aberto reconecta — ou sobe um daemon novo.
+    if let Some(state) = app.try_state::<DaemonClient>() {
+        state.drop_conn();
+    }
 }
 
-#[cfg(unix)]
-fn connect_or_spawn_daemon() -> Result<std::os::unix::net::UnixStream, String> {
-    use std::os::unix::net::UnixStream;
-    use std::time::{Duration, Instant};
-
-    let path = perene_core::paths::daemon_endpoint();
-    if let Ok(s) = UnixStream::connect(&path) {
+/// Conecta no daemon; se não houver ninguém escutando, sobe um e espera subir.
+fn connect_or_spawn_daemon() -> Result<Stream, String> {
+    if let Ok(s) = try_connect() {
         return Ok(s); // daemon já rodando → adota
     }
     spawn_daemon()?;
     let deadline = Instant::now() + Duration::from_secs(5);
+    let mut last_err;
     loop {
-        if let Ok(s) = UnixStream::connect(&path) {
-            return Ok(s);
+        match try_connect() {
+            Ok(s) => return Ok(s),
+            Err(e) => last_err = e.to_string(),
         }
         if Instant::now() >= deadline {
-            return Err("daemon não respondeu a tempo".into());
+            return Err(format!("daemon não respondeu a tempo: {last_err}"));
         }
         std::thread::sleep(Duration::from_millis(50));
     }
+}
+
+#[cfg(unix)]
+fn try_connect() -> std::io::Result<Stream> {
+    Stream::connect(perene_core::paths::daemon_endpoint())
+}
+
+#[cfg(windows)]
+fn try_connect() -> std::io::Result<Stream> {
+    perene_daemon::winpipe::connect(&perene_core::paths::daemon_endpoint())
 }
 
 #[cfg(unix)]
@@ -156,7 +193,29 @@ fn spawn_daemon() -> Result<(), String> {
             Ok(())
         });
     }
-    cmd.spawn().map_err(|e| format!("falha ao subir o daemon: {e}"))?;
+    cmd.spawn()
+        .map_err(|e| format!("falha ao subir o daemon: {e}"))?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn spawn_daemon() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Stdio;
+
+    // DETACHED_PROCESS: o daemon não herda (nem abre) console — é o análogo do
+    // setsid, e evita a janelinha preta piscando. CREATE_NEW_PROCESS_GROUP
+    // impede que um Ctrl+C na UI derrube junto os terminais.
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+
+    let mut cmd = daemon_command()?;
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    cmd.spawn()
+        .map_err(|e| format!("falha ao subir o daemon: {e}"))?;
     Ok(())
 }
 
@@ -193,7 +252,7 @@ pub fn terminal_write(
     pane_id: String,
     data: String,
 ) -> Result<(), String> {
-    state.send(&ClientMessage::Write {
+    state.send_connected(&ClientMessage::Write {
         pane_id,
         data_b64: b64(data.as_bytes()),
     })

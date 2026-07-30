@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "../lib/i18n.svelte";
+  import { baseName } from "../lib/paths";
   import { onMount, onDestroy } from "svelte";
   import {
     GitBranch,
@@ -183,7 +184,7 @@
       } catch {
         content = "";
       }
-      const name = path.split("/").pop() ?? path;
+      const name = baseName(path) || path;
       fileStates.set(
         path,
         createFileState(content, name, () => markDirty(path), (c) => saveFile(path, c)),

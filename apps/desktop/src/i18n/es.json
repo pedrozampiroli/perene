@@ -181,5 +181,7 @@
   "confirm.closeTabMsg": "¿Cerrar \"{name}\"? La sesión se cerrará.",
   "confirm.closePaneTitle": "Cerrar panel",
   "confirm.closePaneMsg": "¿Cerrar este panel? La sesión se cerrará.",
-  "terminal.processEnded": "[proceso terminado]"
+  "terminal.processEnded": "[proceso terminado]",
+  "terminal.spawnFailed": "No se pudo iniciar esta terminal.",
+  "terminal.writeFailed": "Esta terminal ya no está conectada al daemon de Perene."
 }

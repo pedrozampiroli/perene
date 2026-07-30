@@ -181,5 +181,7 @@
   "confirm.closeTabMsg": "Close \"{name}\"? The session will be terminated.",
   "confirm.closePaneTitle": "Close pane",
   "confirm.closePaneMsg": "Close this pane? The session will be terminated.",
-  "terminal.processEnded": "[process ended]"
+  "terminal.processEnded": "[process ended]",
+  "terminal.spawnFailed": "Could not start this terminal.",
+  "terminal.writeFailed": "This terminal is no longer connected to the Perene daemon."
 }

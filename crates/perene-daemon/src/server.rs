@@ -1,13 +1,18 @@
 //! Transporte IPC + single-instance.
 //!
-//! Unix: `UnixListener`/`UnixStream` (mac/linux) — implementado e testado.
-//! Windows: named pipes ficam pro M6 (quando houver CI Windows de verdade); por
-//! ora [`run`] retorna erro claro lá, mas o crate compila.
+//! Unix: `UnixListener`/`UnixStream` (mac/linux).
+//! Windows: named pipes ([`crate::winpipe`]) — mesmo protocolo, mesmo loop.
 //!
-//! Single-instance (lição #2 — dois daemons NUNCA): `flock` exclusivo no lockfile.
-//! Se outro daemon já segura o lock, [`run`] falha e o processo sai (a UI então
-//! adota o daemon existente conectando no socket).
+//! A lógica de atendimento ([`handle_client`]/[`dispatch`]) é genérica sobre
+//! [`Transport`], então as duas plataformas rodam exatamente o mesmo código: só
+//! o "como conectar" muda.
+//!
+//! Single-instance (lição #2 — dois daemons NUNCA): lock exclusivo no lockfile
+//! (`flock` no unix, abertura sem compartilhamento no Windows). Se outro daemon
+//! já segura o lock, [`run`] falha e o processo sai (a UI então adota o daemon
+//! existente conectando no endpoint).
 
+use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -19,6 +24,7 @@ use crate::session::SessionManager;
 /// tocam `~/.perene2`, lição #1).
 #[derive(Debug, Clone)]
 pub struct Config {
+    /// Endpoint IPC: caminho do unix socket, ou nome do named pipe no Windows.
     pub socket_path: PathBuf,
     pub lock_path: PathBuf,
     pub scrollback_dir: PathBuf,
@@ -38,23 +44,45 @@ impl Config {
     }
 }
 
+/// Conexão com um cliente. Precisa ser clonável porque uma thread lê comandos
+/// enquanto outra escreve o output dos PTYs na mesma conexão.
+pub trait Transport: Read + Write + Send + Sized + 'static {
+    fn split(&self) -> std::io::Result<Self>;
+}
+
+#[cfg(unix)]
+impl Transport for std::os::unix::net::UnixStream {
+    fn split(&self) -> std::io::Result<Self> {
+        self.try_clone()
+    }
+}
+
+#[cfg(windows)]
+impl Transport for crate::winpipe::PipeStream {
+    fn split(&self) -> std::io::Result<Self> {
+        self.try_clone()
+    }
+}
+
 /// Guard do lock de single-instance. Solta o lock quando dropado (fim do processo).
 pub struct SingleInstance {
     #[allow(dead_code)]
     file: std::fs::File,
 }
 
-#[cfg(unix)]
-pub fn acquire_single_instance(lock_path: &Path) -> anyhow::Result<SingleInstance> {
-    use std::os::unix::io::AsRawFd;
+fn open_lock_file(lock_path: &Path) -> std::io::Result<std::fs::OpenOptions> {
     if let Some(parent) = lock_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(false)
-        .open(lock_path)?;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.create(true).write(true).truncate(false);
+    Ok(opts)
+}
+
+#[cfg(unix)]
+pub fn acquire_single_instance(lock_path: &Path) -> anyhow::Result<SingleInstance> {
+    use std::os::unix::io::AsRawFd;
+    let file = open_lock_file(lock_path)?.open(lock_path)?;
     // flock exclusivo não-bloqueante.
     let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
     if ret != 0 {
@@ -64,11 +92,21 @@ pub fn acquire_single_instance(lock_path: &Path) -> anyhow::Result<SingleInstanc
 }
 
 #[cfg(windows)]
-pub fn acquire_single_instance(_lock_path: &Path) -> anyhow::Result<SingleInstance> {
-    anyhow::bail!("single-instance no Windows ainda não implementado — TODO M6")
+pub fn acquire_single_instance(lock_path: &Path) -> anyhow::Result<SingleInstance> {
+    use std::os::windows::fs::OpenOptionsExt;
+    // share_mode(0) = FILE_SHARE_NONE: o segundo processo a abrir leva
+    // ERROR_SHARING_VIOLATION (os error 32). É o equivalente do flock aqui.
+    let file = match open_lock_file(lock_path)?.share_mode(0).open(lock_path) {
+        Ok(f) => f,
+        Err(e) if e.raw_os_error() == Some(32) => {
+            anyhow::bail!("outro daemon já está rodando (lock ocupado)")
+        }
+        Err(e) => return Err(e.into()),
+    };
+    Ok(SingleInstance { file })
 }
 
-/// Sobe o daemon: adquire o lock, faz bind do socket e serve para sempre.
+/// Sobe o daemon: adquire o lock, faz bind do endpoint e serve para sempre.
 #[cfg(unix)]
 pub fn run(config: Config) -> anyhow::Result<()> {
     use std::os::unix::net::UnixListener;
@@ -99,13 +137,38 @@ pub fn run(config: Config) -> anyhow::Result<()> {
 }
 
 #[cfg(windows)]
-pub fn run(_config: Config) -> anyhow::Result<()> {
-    anyhow::bail!("daemon IPC no Windows ainda não implementado (named pipes) — TODO M6")
+pub fn run(config: Config) -> anyhow::Result<()> {
+    use crate::winpipe::PipeListener;
+
+    let _lock = acquire_single_instance(&config.lock_path)?;
+
+    // Named pipes vivem num namespace do kernel, não no filesystem: nada de
+    // criar diretório ou limpar sobra de socket como no unix.
+    let mut listener = PipeListener::bind(&config.socket_path)?;
+
+    let mgr = SessionManager::new(config.scrollback_dir.clone(), config.scrollback_cap);
+
+    // Falhas isoladas de accept são toleráveis; falha em série significa pipe
+    // quebrado — melhor sair do que rodar em loop quente para sempre.
+    let mut consecutive_errors = 0;
+    loop {
+        match listener.accept() {
+            Ok(stream) => {
+                consecutive_errors = 0;
+                let mgr = Arc::clone(&mgr);
+                std::thread::spawn(move || handle_client(mgr, stream));
+            }
+            Err(e) => {
+                consecutive_errors += 1;
+                if consecutive_errors >= 16 {
+                    return Err(e.into());
+                }
+            }
+        }
+    }
 }
 
-#[cfg(unix)]
-fn handle_client(mgr: Arc<SessionManager>, stream: std::os::unix::net::UnixStream) {
-    use std::io::{BufRead, BufReader, BufWriter, Write};
+fn handle_client<T: Transport>(mgr: Arc<SessionManager>, stream: T) {
     use std::sync::mpsc;
 
     use perene_protocol::{decode_line, encode_line, ClientMessage, DaemonMessage};
@@ -113,9 +176,9 @@ fn handle_client(mgr: Arc<SessionManager>, stream: std::os::unix::net::UnixStrea
     let client_id = mgr.next_client_id();
     let (tx, rx) = mpsc::channel::<DaemonMessage>();
 
-    // Thread de escrita: dreno do canal → socket. Isola o socket de escritas
+    // Thread de escrita: dreno do canal → conexão. Isola a conexão de escritas
     // concorrentes (as threads de PTY enviam pelo canal).
-    let write_stream = match stream.try_clone() {
+    let write_stream = match stream.split() {
         Ok(s) => s,
         Err(_) => return,
     };
@@ -136,7 +199,7 @@ fn handle_client(mgr: Arc<SessionManager>, stream: std::os::unix::net::UnixStrea
         }
     });
 
-    // Loop de leitura: socket → mensagens do cliente.
+    // Loop de leitura: conexão → mensagens do cliente.
     let reader = BufReader::new(stream);
     for line in reader.lines() {
         let line = match line {
@@ -165,7 +228,6 @@ fn handle_client(mgr: Arc<SessionManager>, stream: std::os::unix::net::UnixStrea
     let _ = writer.join();
 }
 
-#[cfg(unix)]
 fn dispatch(
     mgr: &Arc<SessionManager>,
     client_id: u64,
