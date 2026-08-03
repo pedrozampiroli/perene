@@ -396,6 +396,53 @@ fn spawned_terminals_do_not_inherit_harness_session_env() {
     );
 }
 
+/// Regressão: no bundle AppImage o `AppRun` exporta `PYTHONHOME=$APPDIR/usr/` e
+/// prefixa `LD_LIBRARY_PATH` com as libs do bundle. Herdado pelo login shell,
+/// isso mata qualquer python do sistema ("Fatal Python error: failed to import
+/// encodings module"). O que é do bundle sai; o que era do usuário fica.
+#[cfg(target_os = "linux")]
+#[test]
+fn spawned_terminals_do_not_inherit_appimage_env() {
+    const APPDIR: &str = "/tmp/.mount_PereneTest";
+    std::env::set_var("APPDIR", APPDIR);
+    std::env::set_var("PYTHONHOME", format!("{APPDIR}/usr/"));
+    std::env::set_var(
+        "LD_LIBRARY_PATH",
+        format!("{APPDIR}/usr/lib/:/opt/perene-test-lib"),
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = start_daemon(dir.path());
+
+    let mut c = LineClient::connect(&endpoint).unwrap();
+    hello(&mut c);
+    let _ = c.next_msg(Instant::now() + Duration::from_secs(2));
+
+    let pane_id = "pane_appimage".to_string();
+    c.send(&ClientMessage::Spawn(SpawnRequest {
+        pane_id: pane_id.clone(),
+        cols: 80,
+        rows: 24,
+        cwd: Some(dir.path().to_string_lossy().to_string()),
+        command: Some(
+            "printf 'APPIMGCHECK=[%s][%s][%s]\\n' \"$PYTHONHOME\" \"$APPDIR\" \"$LD_LIBRARY_PATH\""
+                .to_string(),
+        ),
+        shell: Some("/bin/sh".to_string()),
+    }));
+    c.send(&ClientMessage::Attach {
+        pane_id: pane_id.clone(),
+    });
+
+    assert!(
+        c.wait_for_output(
+            "APPIMGCHECK=[][][/opt/perene-test-lib]",
+            Duration::from_secs(30)
+        ),
+        "o terminal herdou o ambiente do AppRun do AppImage (python do sistema quebraria)"
+    );
+}
+
 #[test]
 fn single_instance_lock_blocks_second_daemon() {
     let dir = tempfile::tempdir().unwrap();
