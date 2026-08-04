@@ -121,6 +121,11 @@
             {#if folder.collapsed}<Folder size={14} class="ficon" />{:else}<FolderOpen size={14} class="ficon" />{/if}
             <span class="fname">{folder.name}</span>
             <span class="fcount">{app.tabsInFolder(ws, folder.id).length}</span>
+            <button
+              class="mini"
+              title={t("sidebar.newSessionInFolder")}
+              onclick={(e) => { e.stopPropagation(); app.openContextMenu(e, app.folderMenu(folder.id)); }}
+            ><Plus size={12} /></button>
             <button class="mini" title={t("sidebar.setFolderDirectory")} onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
             <button class="mini" title={t("sidebar.removeFolder")} onclick={(e) => { e.stopPropagation(); app.confirmDeleteFolder(folder.id); }}><X size={12} /></button>
           </div>

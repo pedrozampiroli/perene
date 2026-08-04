@@ -8,7 +8,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "./api";
 import { i18n, detectLocale, t } from "./i18n.svelte";
 import { baseName, isInWorktree } from "./paths";
-import { buildCommand, needsSessionId } from "./profiles";
+import { PROFILES, buildCommand, needsSessionId } from "./profiles";
 import type {
   LayoutNode,
   Manifest,
@@ -133,6 +133,8 @@ export interface ContextMenuState {
 
 export interface NewSession {
   profileId: string;
+  /** Pasta em que a aba será criada (e cujo diretório personalizado é usado). */
+  folderId: string | null;
   repoRoot: string | null;
   /** "project" = raiz do projeto · "existing" = worktree já existente · "new" = criar */
   mode: "project" | "existing" | "new";
@@ -466,7 +468,10 @@ class AppStore {
   folderMenu(id: string): MenuItem[] {
     const f = this.activeWorkspace?.folders.find((f) => f.id === id);
     return [
-      { label: t("menu.newSessionInFolder"), action: () => void this.startNewSessionInFolder(id) },
+      ...PROFILES.map((p) => ({
+        label: t("menu.newSessionWith", { tool: p.label }),
+        action: () => void this.startNewSession(p.id, id),
+      })),
       { separator: true },
       { label: t("menu.rename"), action: () => this.openRenameModal("folder", id, f?.name ?? "") },
       { label: t("menu.setDirectory"), action: () => void this.changeFolderDirectory(id) },
@@ -497,29 +502,6 @@ class AppStore {
       ...(moves.length || tab?.folderId ? [{ separator: true }] : []),
       { label: t("menu.closeTab"), danger: true, action: () => this.confirmCloseTab(id) },
     ];
-  }
-
-  /** Nova sessão já dentro de uma pasta (usa o diretório dela). */
-  async startNewSessionInFolder(folderId: string): Promise<void> {
-    const ws = this.activeWorkspace;
-    if (!ws) return;
-    const folder = ws.folders.find((f) => f.id === folderId);
-    const cwd = folder?.directory ?? ws.directory ?? this.home;
-    const pane = this.makePane("shell", cwd);
-    const tab: Tab = {
-      id: newId("tab"),
-      folderId,
-      title: "shell",
-      panes: [pane],
-      layout: leaf(pane.id),
-      activePaneId: pane.id,
-      createdAt: now(),
-      updatedAt: now(),
-    };
-    ws.tabs.push(tab);
-    ws.activeTabId = tab.id;
-    this.activePaneId = pane.id;
-    this.save();
   }
 
   // ── Confirmação antes de excluir/fechar ────────────────────────────────────
@@ -773,13 +755,18 @@ class AppStore {
   }
 
   /** Cria uma aba com um cwd específico (usado pelas worktrees isoladas). */
-  createTabInDir(profileId: string, dir: string, title?: string): void {
+  createTabInDir(
+    profileId: string,
+    dir: string,
+    title?: string,
+    folderId: string | null = null,
+  ): void {
     const ws = this.activeWorkspace;
     if (!ws) return;
     const pane = this.makePane(profileId, dir);
     const tab: Tab = {
       id: newId("tab"),
-      folderId: null,
+      folderId,
       title: title ?? profileId,
       panes: [pane],
       layout: leaf(pane.id),
@@ -794,15 +781,18 @@ class AppStore {
   }
 
   // ── Nova sessão (com opção de worktree isolada) ────────────────────────────
-  async startNewSession(profileId: string): Promise<void> {
+  /** Abre uma sessão. Com `folderId`, a aba nasce dentro da pasta e usa o
+   *  diretório personalizado dela (se houver). */
+  async startNewSession(profileId: string, folderId: string | null = null): Promise<void> {
     const ws = this.activeWorkspace;
     if (!ws) return;
-    // Sem "perguntar" ligado → cria direto no diretório do projeto.
+    // Sem "perguntar" ligado → cria direto no diretório certo.
     if (!this.settings.askWorktree) {
-      this.createTab(profileId);
+      this.createTab(profileId, folderId);
       return;
     }
-    const dir = ws.directory ?? this.home;
+    // Diretório da PASTA (se personalizado), senão o do workspace.
+    const dir = this.cwdFor(ws, folderId);
     let gs = null;
     try {
       gs = await api.gitStatus(dir);
@@ -811,7 +801,7 @@ class AppStore {
     }
     // Fora de repo git → worktree não faz sentido; cria direto.
     if (!gs?.isRepo || !gs.root) {
-      this.createTab(profileId);
+      this.createTab(profileId, folderId);
       return;
     }
     let branches: string[] = [];
@@ -831,6 +821,7 @@ class AppStore {
     }
     this.newSession = {
       profileId,
+      folderId,
       repoRoot: gs.root,
       mode: "project",
       base: gs.branch,
@@ -849,7 +840,7 @@ class AppStore {
 
     if (s.mode === "project") {
       this.newSession = null;
-      this.createTab(s.profileId);
+      this.createTab(s.profileId, s.folderId);
       return;
     }
 
@@ -859,7 +850,7 @@ class AppStore {
       const wt = s.worktrees.find((w) => w.path === s.existingPath);
       const label = wt?.branch || baseName(s.existingPath) || "worktree";
       this.newSession = null;
-      this.createTabInDir(s.profileId, s.existingPath, `⑂ ${label}`);
+      this.createTabInDir(s.profileId, s.existingPath, `⑂ ${label}`, s.folderId);
       return;
     }
 
@@ -870,7 +861,7 @@ class AppStore {
       const wt = await api.createProjectWorktree(s.repoRoot, s.base, s.name.trim());
       const label = s.name.trim().split("/").pop() ?? s.name.trim();
       this.newSession = null;
-      this.createTabInDir(s.profileId, wt, `⑂ ${label}`);
+      this.createTabInDir(s.profileId, wt, `⑂ ${label}`, s.folderId);
     } catch (e) {
       s.creating = false;
       s.error = String(e);

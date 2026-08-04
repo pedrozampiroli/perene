@@ -160,7 +160,6 @@
   "menu.rename": "Renomear…",
   "menu.setDirectory": "Definir diretório…",
   "menu.deleteWorkspace": "Excluir workspace",
-  "menu.newSessionInFolder": "Nova sessão nesta pasta…",
   "menu.expand": "Expandir",
   "menu.collapse": "Recolher",
   "menu.deleteFolder": "Excluir pasta",
@@ -215,5 +214,7 @@
   "onb.splits.tip": "Arraste o divisor entre os painéis para redimensionar; a proporção fica salva.",
   "onb.git.title": "O git sempre à vista",
   "onb.git.body": "O branch do painel ativo fica aqui em cima, com o estado sujo e os contadores ahead/behind. Clique para trocar ou criar branch, fazer fetch, pull, push ou abrir um pull request.",
-  "onb.git.tip": "Ele acompanha o painel ativo — então uma sessão rodando numa worktree mostra o branch daquela worktree."
+  "onb.git.tip": "Ele acompanha o painel ativo — então uma sessão rodando numa worktree mostra o branch daquela worktree.",
+  "menu.newSessionWith": "Nova sessão {tool} aqui",
+  "sidebar.newSessionInFolder": "Nova sessão nesta pasta"
 }

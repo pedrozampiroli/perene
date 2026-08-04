@@ -160,7 +160,6 @@
   "menu.rename": "Rename…",
   "menu.setDirectory": "Set directory…",
   "menu.deleteWorkspace": "Delete workspace",
-  "menu.newSessionInFolder": "New session in this folder…",
   "menu.expand": "Expand",
   "menu.collapse": "Collapse",
   "menu.deleteFolder": "Delete folder",
@@ -215,5 +214,7 @@
   "onb.splits.tip": "Drag the divider between panes to resize; the proportion is remembered.",
   "onb.git.title": "Git is always in sight",
   "onb.git.body": "The current branch of the active pane lives up here, with dirty state and ahead/behind counts. Click it to switch or create a branch, fetch, pull, push or open a pull request.",
-  "onb.git.tip": "It follows the active pane — so a session running in a worktree shows that worktree's branch."
+  "onb.git.tip": "It follows the active pane — so a session running in a worktree shows that worktree's branch.",
+  "menu.newSessionWith": "New {tool} session here",
+  "sidebar.newSessionInFolder": "New session in this folder"
 }
