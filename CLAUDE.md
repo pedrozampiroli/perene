@@ -3,10 +3,10 @@
 Reescrita multiplataforma do Perene (gerenciador de terminais para CLIs de IA).
 O plano completo está em `PLAN.md`; as regras abaixo são o resumo operacional.
 
-> **Estado atual / retomada:** ver [`docs/HANDOFF.md`](docs/HANDOFF.md). Resumo:
-> M0–M6 do PLAN.md feitos e commitados no branch `feat/perene-v2-milestones`
-> (não mergeado). Pendente: validação manual do gate do M0 (dead keys, vim,
-> copiar/colar) e dos fluxos M3/M5; push pro GitHub pra CI verde.
+> **Estado atual / retomada:** leia [`docs/HANDOFF.md`](docs/HANDOFF.md) — é o
+> mapa da infra (arquitetura, fluxos, convenções, gotchas e pendências). Resumo:
+> M0–M6 concluídos, repo público em github.com/pedrozampiroli/perene com CI
+> verde nas 3 plataformas, app em uso diário e instalado em /Applications.
 
 ## Regras invioláveis (lições da v1)
 
@@ -37,8 +37,12 @@ colidir com `~/.perene/` da v1.
 
 ## Convenções
 
-- **Git:** nunca usar worktrees; um branch novo por tarefa. Não commitar sem
-  pedido explícito.
+- **Git:** nunca usar worktrees **para o desenvolvimento** (as worktrees do
+  produto, em `.perene/worktrees/`, são outra coisa); um branch por tarefa. O
+  repo é público e tem colaborador — prefira branch + PR a push direto no `main`.
+- **Daemon:** ao reinstalar o app, mate **só a UI** (`grep -v -- --daemon`).
+  Um `pkill` genérico derruba o daemon e **destrói as sessões vivas do usuário**;
+  se a mudança for no daemon, avise antes de reiniciá-lo.
 - **Idioma:** **UI em inglês por padrão, com i18n** — nenhuma string solta nos
   componentes: use `t("chave")` de `src/lib/i18n.svelte.ts` e adicione a chave em
   `src/i18n/en.json` (fonte da verdade) + nas traduções. Idioma novo = duplicar
