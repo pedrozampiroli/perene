@@ -8,6 +8,7 @@
 resolver = "2"
 members = [
     "crates/perene-protocol",
+    "crates/perene-acp",
     "crates/perene-core",
     "crates/perene-daemon",
     "apps/desktop/src-tauri",
@@ -32,6 +33,7 @@ base64 = "0.22"
 
 perene-protocol = { path = "crates/perene-protocol" }
 perene-core = { path = "crates/perene-core" }
+perene-acp = { path = "crates/perene-acp" }
 
 # Perfil de release enxuto — RAM/binário pequenos são requisito do projeto.
 [profile.release]
