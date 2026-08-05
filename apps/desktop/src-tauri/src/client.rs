@@ -137,6 +137,9 @@ fn read_loop<R: Read>(stream: R, app: AppHandle) {
             DaemonMessage::Exit(e) => {
                 let _ = app.emit(events::PTY_EXIT, e);
             }
+            DaemonMessage::Status(st) => {
+                let _ = app.emit(events::PTY_STATUS, st);
+            }
             _ => {}
         }
     }

@@ -8,6 +8,7 @@
   import { baseName } from "../lib/paths";
   import FilesPane from "./FilesPane.svelte";
   import ToolIcon from "./ToolIcon.svelte";
+  import StatusDot from "./StatusDot.svelte";
 
   let { paneId }: { paneId: string } = $props();
 
@@ -53,6 +54,7 @@
     </span>
     <span class="label">{isFiles ? t("pane.editor") : prof.label}</span>
     <span class="dir">{dirLabel}</span>
+    <span class="pstatus" style="color:{prof.color}"><StatusDot state={app.paneStatus[paneId]} /></span>
     <button class="x" title={t("pane.close") + " (⌘W)"} onclick={() => app.confirmClosePane(paneId)}><X size={13} /></button>
   </div>
   {#if isFiles}
@@ -103,6 +105,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .pstatus {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
   }
   .x {
     display: flex;

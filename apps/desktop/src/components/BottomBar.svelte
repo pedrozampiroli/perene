@@ -14,6 +14,7 @@
   import { app } from "../lib/store.svelte";
   import { PROFILES, profile } from "../lib/profiles";
   import ToolIcon from "./ToolIcon.svelte";
+  import StatusDot from "./StatusDot.svelte";
   import type { SplitDirection } from "../lib/types";
 
   const ws = $derived(app.activeWorkspace);
@@ -46,6 +47,7 @@
           title={tab.title}
         >
           <span class="ti"><ToolIcon id={tab.panes[0]?.toolProfileId ?? "shell"} size={13} /></span>{tab.title}
+          <StatusDot state={app.tabStatus(tab)} size={7} />
         </button>
       {/each}
     {/if}

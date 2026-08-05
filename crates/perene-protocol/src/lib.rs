@@ -52,11 +52,40 @@ pub struct TerminalExit {
 pub mod events {
     pub const PTY_OUTPUT: &str = "pty-output";
     pub const PTY_EXIT: &str = "pty-exit";
+    pub const PTY_STATUS: &str = "pty-status";
 }
 
 /// Versão do protocolo IPC UI ⇄ daemon. Bump quando o wire mudar de forma
 /// incompatível — o daemon rejeita clientes com versão diferente.
 pub const PROTOCOL_VERSION: u32 = 1;
+
+/// O que a sessão está fazendo agora — derivado do stream do PTY pelo daemon.
+///
+/// Serve para o indicador discreto na UI. É heurístico por natureza (lemos o que
+/// a CLI desenha no terminal), então erre para o lado silencioso: na dúvida,
+/// `Idle` — um indicador errado incomoda mais do que indicador nenhum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PaneState {
+    /// Sem atividade relevante (não mostra nada na UI).
+    Idle,
+    /// Produzindo saída agora (spinner).
+    Running,
+    /// Parou pedindo confirmação do usuário (bolinha âmbar piscando).
+    Waiting,
+    /// Terminou uma execução há pouco (bolinha verde, some sozinha).
+    Done,
+    /// A última execução terminou em erro (bolinha vermelha).
+    Error,
+}
+
+/// Mudança de estado de um pane.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaneStatus {
+    pub pane_id: PaneId,
+    pub state: PaneState,
+}
 
 /// Metadados de um pane vivo no daemon.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +136,8 @@ pub enum DaemonMessage {
     AttachDone { pane_id: PaneId },
     /// O processo do pane terminou.
     Exit(TerminalExit),
+    /// O que a sessão está fazendo (para o indicador na UI).
+    Status(PaneStatus),
     /// Resposta ao `ListPanes`.
     Panes { panes: Vec<PaneInfo> },
     /// Resposta ao `Ping`.

@@ -16,6 +16,7 @@ import type {
   Settings,
   SplitDirection,
   Tab,
+  PaneState,
   SearchHit,
   Workspace,
   Worktree,
@@ -184,6 +185,21 @@ class AppStore {
   newSession = $state<NewSession | null>(null);
   contextMenu = $state<ContextMenuState | null>(null);
   palette = $state<SearchPalette | null>(null);
+  /** Estado de cada pane (indicador discreto). Vem do daemon. */
+  paneStatus = $state<Record<string, PaneState>>({});
+  setPaneStatus(paneId: string, state: PaneState): void {
+    if (state === "idle") delete this.paneStatus[paneId];
+    else this.paneStatus[paneId] = state;
+  }
+  /** Estado "mais urgente" de uma aba (uma aba pode ter vários panes). */
+  tabStatus(tab: Tab): PaneState | null {
+    const order: PaneState[] = ["error", "waiting", "running", "done"];
+    for (const st of order) {
+      if (tab.panes.some((p) => this.paneStatus[p.id] === st)) return st;
+    }
+    return null;
+  }
+
   /** Callback do editor ativo pra abrir arquivo (path, linha). */
   openInEditor: ((path: string, line?: number) => void) | null = null;
   home = "";

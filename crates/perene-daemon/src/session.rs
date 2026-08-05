@@ -19,9 +19,12 @@ use base64::Engine;
 use parking_lot::Mutex;
 use portable_pty::{native_pty_system, MasterPty, PtySize};
 
-use perene_protocol::{DaemonMessage, PaneId, PaneInfo, SpawnRequest, TerminalExit, TerminalOutput};
+use perene_protocol::{
+    DaemonMessage, PaneId, PaneInfo, PaneStatus, SpawnRequest, TerminalExit, TerminalOutput,
+};
 
 use crate::pty::build_command;
+use crate::status::{StatusDetector, QUIET};
 
 pub type ClientId = u64;
 
@@ -40,6 +43,8 @@ struct Pane {
     subscribers: Vec<(ClientId, Sender<DaemonMessage>)>,
     /// `false` quando o processo já saiu (mas o pane fica pra mostrar a saída).
     alive: bool,
+    /// O que a sessão está fazendo (para o indicador na UI).
+    status: StatusDetector,
 }
 
 pub struct SessionManager {
@@ -51,12 +56,32 @@ pub struct SessionManager {
 
 impl SessionManager {
     pub fn new(scrollback_dir: PathBuf, scrollback_cap: usize) -> Arc<Self> {
-        Arc::new(Self {
+        let mgr = Arc::new(Self {
             panes: Mutex::new(HashMap::new()),
             scrollback_cap,
             scrollback_dir,
             next_client: AtomicU64::new(1),
-        })
+        });
+        mgr.clone().spawn_status_ticker();
+        mgr
+    }
+
+    /// Estados que dependem de TEMPO (parou de produzir saída, "terminou" que
+    /// expira) não têm evento que os dispare — daí o ticker.
+    fn spawn_status_ticker(self: Arc<Self>) {
+        thread::spawn(move || loop {
+            thread::sleep(QUIET / 3);
+            let mut panes = self.panes.lock();
+            for (id, pane) in panes.iter_mut() {
+                if let Some(state) = pane.status.tick() {
+                    let msg = DaemonMessage::Status(PaneStatus {
+                        pane_id: id.clone(),
+                        state,
+                    });
+                    pane.subscribers.retain(|(_, tx)| tx.send(msg.clone()).is_ok());
+                }
+            }
+        });
     }
 
     pub fn next_client_id(&self) -> ClientId {
@@ -101,6 +126,7 @@ impl SessionManager {
                 scrollback: Vec::new(),
                 subscribers: Vec::new(),
                 alive: true,
+                status: StatusDetector::new(),
             },
         );
         drop(panes);
@@ -178,6 +204,15 @@ impl SessionManager {
             });
             // `send` em canal ilimitado não bloqueia; assinantes mortos caem fora.
             pane.subscribers.retain(|(_, tx)| tx.send(msg.clone()).is_ok());
+
+            // Indicador: só emite quando o estado MUDA (barato).
+            if let Some(state) = pane.status.on_output(bytes) {
+                let msg = DaemonMessage::Status(PaneStatus {
+                    pane_id: pane_id.to_string(),
+                    state,
+                });
+                pane.subscribers.retain(|(_, tx)| tx.send(msg.clone()).is_ok());
+            }
         }
     }
 
@@ -208,6 +243,11 @@ impl SessionManager {
                 let _ = tx.send(DaemonMessage::AttachDone {
                     pane_id: pane_id.to_string(),
                 });
+                // Estado atual, pra UI já nascer com o indicador certo.
+                let _ = tx.send(DaemonMessage::Status(PaneStatus {
+                    pane_id: pane_id.to_string(),
+                    state: pane.status.state(),
+                }));
                 if !pane.subscribers.iter().any(|(id, _)| *id == client_id) {
                     pane.subscribers.push((client_id, tx.clone()));
                 }

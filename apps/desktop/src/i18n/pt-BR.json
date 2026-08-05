@@ -216,5 +216,9 @@
   "onb.git.body": "O branch do painel ativo fica aqui em cima, com o estado sujo e os contadores ahead/behind. Clique para trocar ou criar branch, fazer fetch, pull, push ou abrir um pull request.",
   "onb.git.tip": "Ele acompanha o painel ativo — então uma sessão rodando numa worktree mostra o branch daquela worktree.",
   "menu.newSessionWith": "Nova sessão {tool} aqui",
-  "sidebar.newSessionInFolder": "Nova sessão nesta pasta"
+  "sidebar.newSessionInFolder": "Nova sessão nesta pasta",
+  "status.running": "Rodando…",
+  "status.waiting": "Aguardando sua aprovação",
+  "status.done": "Terminou",
+  "status.error": "Terminou com erro"
 }

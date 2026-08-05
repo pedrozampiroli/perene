@@ -5,6 +5,7 @@
   import { profile } from "../lib/profiles";
   import { shortPath as shortenPath } from "../lib/paths";
   import ToolIcon from "./ToolIcon.svelte";
+  import StatusDot from "./StatusDot.svelte";
   import type { Tab } from "../lib/types";
 
   const ws = $derived(app.activeWorkspace);
@@ -165,6 +166,7 @@
   >
     <span class="ticon" style="color:{prof.color}"><ToolIcon id={tab.panes[0]?.toolProfileId ?? "shell"} size={14} /></span>
     <span class="ttitle">{tab.title}</span>
+    <span class="tstatus" style="color:{prof.color}"><StatusDot state={app.tabStatus(tab)} /></span>
     <button class="mini" title={t("sidebar.closeTab")} onclick={(e) => { e.stopPropagation(); app.confirmCloseTab(tab.id); }}><X size={12} /></button>
   </div>
 {/snippet}
@@ -313,6 +315,15 @@
   .ticon {
     display: flex;
     flex: 0 0 auto;
+  }
+  /* Indicador some junto com os botões no hover pra não competir com eles. */
+  .tstatus {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+  }
+  .tab-row:hover .tstatus {
+    display: none;
   }
   .mini {
     display: flex;

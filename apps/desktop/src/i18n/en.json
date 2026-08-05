@@ -216,5 +216,9 @@
   "onb.git.body": "The current branch of the active pane lives up here, with dirty state and ahead/behind counts. Click it to switch or create a branch, fetch, pull, push or open a pull request.",
   "onb.git.tip": "It follows the active pane — so a session running in a worktree shows that worktree's branch.",
   "menu.newSessionWith": "New {tool} session here",
-  "sidebar.newSessionInFolder": "New session in this folder"
+  "sidebar.newSessionInFolder": "New session in this folder",
+  "status.running": "Running…",
+  "status.waiting": "Waiting for your approval",
+  "status.done": "Finished",
+  "status.error": "Finished with error"
 }

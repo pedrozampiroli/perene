@@ -18,7 +18,9 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use base64::Engine;
-use perene_protocol::{decode_line, encode_line, ClientMessage, DaemonMessage, SpawnRequest};
+use perene_protocol::{
+    decode_line, encode_line, ClientMessage, DaemonMessage, PaneState, SpawnRequest,
+};
 
 use platform::Stream;
 
@@ -218,6 +220,19 @@ impl LineClient {
         String::from_utf8_lossy(&acc).contains(needle)
     }
 
+    /// Espera um `Status` com o estado desejado (indicador da UI).
+    fn wait_for_status(&mut self, want: PaneState, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if let Some(DaemonMessage::Status(st)) = self.next_msg(deadline) {
+                if st.state == want {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// Igual, mas só considera mensagens de Scrollback (replay do reattach).
     fn wait_for_scrollback(&mut self, needle: &str, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
@@ -411,4 +426,38 @@ fn single_instance_lock_blocks_second_daemon() {
     drop(g1);
     let g3 = perene_daemon::acquire_single_instance(&lock);
     assert!(g3.is_ok(), "liberado o lock, um novo daemon pode assumir");
+}
+
+
+/// O indicador da UI vive de mensagens `Status` do daemon: saída chegando marca
+/// `Running` e, depois do silêncio, `Done`. Sem isso o dot não acende.
+#[test]
+fn reports_session_status_running_then_done() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = start_daemon(dir.path());
+
+    let mut c = LineClient::connect(&endpoint).unwrap();
+    hello(&mut c);
+
+    let pane_id = "pane_status".to_string();
+    c.send(&ClientMessage::Spawn(SpawnRequest {
+        pane_id: pane_id.clone(),
+        cols: 80,
+        rows: 24,
+        cwd: Some(dir.path().to_string_lossy().to_string()),
+        command: Some(platform::echo_command("trabalhando")),
+        shell: platform::test_shell(),
+    }));
+    c.send(&ClientMessage::Attach {
+        pane_id: pane_id.clone(),
+    });
+
+    assert!(
+        c.wait_for_status(PaneState::Running, Duration::from_secs(10)),
+        "saída do PTY devia marcar a sessão como Running"
+    );
+    assert!(
+        c.wait_for_status(PaneState::Done, Duration::from_secs(10)),
+        "depois do silêncio, a sessão devia virar Done"
+    );
 }

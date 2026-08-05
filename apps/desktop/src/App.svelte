@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
+  import { PTY_STATUS } from "./lib/events";
+  import type { PaneState } from "./lib/types";
   import { app } from "./lib/store.svelte";
   import Sidebar from "./components/Sidebar.svelte";
   import TabGrid from "./components/TabGrid.svelte";
@@ -34,8 +37,16 @@
 
   onMount(() => {
     void app.load();
+    // Indicador de status das sessões: um listener global (o daemon só emite
+    // quando o estado MUDA, então é barato).
+    const un = listen<{ paneId: string; state: PaneState }>(PTY_STATUS, (e) =>
+      app.setPaneStatus(e.payload.paneId, e.payload.state),
+    );
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      void un.then((f) => f());
+    };
   });
 
   function onKey(e: KeyboardEvent) {

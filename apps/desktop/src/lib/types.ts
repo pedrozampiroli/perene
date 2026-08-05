@@ -124,6 +124,9 @@ export interface Commit {
   date: string;
 }
 
+/** O que a sessão está fazendo (indicador discreto na UI). */
+export type PaneState = "idle" | "running" | "waiting" | "done" | "error";
+
 export interface SearchHit {
   path: string;
   line: number;

@@ -8,6 +8,7 @@
 pub mod pty;
 pub mod server;
 pub mod session;
+pub mod status;
 /// Transporte IPC do Windows (named pipes). Exposto porque a UI também o usa
 /// para falar com o daemon.
 #[cfg(windows)]

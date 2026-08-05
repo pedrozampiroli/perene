@@ -216,5 +216,9 @@
   "onb.git.body": "La rama del panel activo está aquí arriba, con el estado sin confirmar y los contadores ahead/behind. Haz clic para cambiar o crear rama, fetch, pull, push o abrir un pull request.",
   "onb.git.tip": "Sigue al panel activo — así una sesión en un worktree muestra la rama de ese worktree.",
   "menu.newSessionWith": "Nueva sesión {tool} aquí",
-  "sidebar.newSessionInFolder": "Nueva sesión en esta carpeta"
+  "sidebar.newSessionInFolder": "Nueva sesión en esta carpeta",
+  "status.running": "Ejecutando…",
+  "status.waiting": "Esperando tu aprobación",
+  "status.done": "Terminó",
+  "status.error": "Terminó con error"
 }
