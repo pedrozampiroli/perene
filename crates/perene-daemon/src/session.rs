@@ -23,6 +23,7 @@ use perene_protocol::{
     DaemonMessage, PaneId, PaneInfo, PaneStatus, SpawnRequest, TerminalExit, TerminalOutput,
 };
 
+use crate::acp::AcpManager;
 use crate::pty::build_command;
 use crate::status::{StatusDetector, QUIET};
 
@@ -49,6 +50,9 @@ struct Pane {
 
 pub struct SessionManager {
     panes: Mutex<HashMap<PaneId, Pane>>,
+    /// Panes em modo ACP. Vivem aqui pelo mesmo motivo dos PTYs: fechar a janela
+    /// não pode matar a conversa.
+    acp: AcpManager,
     scrollback_cap: usize,
     scrollback_dir: PathBuf,
     next_client: AtomicU64,
@@ -58,12 +62,18 @@ impl SessionManager {
     pub fn new(scrollback_dir: PathBuf, scrollback_cap: usize) -> Arc<Self> {
         let mgr = Arc::new(Self {
             panes: Mutex::new(HashMap::new()),
+            acp: AcpManager::new(),
             scrollback_cap,
             scrollback_dir,
             next_client: AtomicU64::new(1),
         });
         mgr.clone().spawn_status_ticker();
         mgr
+    }
+
+    /// Sessões ACP (o dispatch do IPC fala direto com elas).
+    pub fn acp(&self) -> &AcpManager {
+        &self.acp
     }
 
     /// Estados que dependem de TEMPO (parou de produzir saída, "terminou" que
@@ -299,15 +309,23 @@ impl SessionManager {
         }
     }
 
+    /// Panes vivos — terminal e ACP juntos: a UI só quer saber o que dá para
+    /// reatachar.
     pub fn list_panes(&self) -> Vec<PaneInfo> {
-        self.panes
+        let mut panes: Vec<PaneInfo> = self
+            .panes
             .lock()
             .iter()
             .map(|(id, p)| PaneInfo {
                 pane_id: id.clone(),
                 alive: p.alive,
             })
-            .collect()
+            .collect();
+        panes.extend(self.acp.pane_ids().into_iter().map(|pane_id| PaneInfo {
+            pane_id,
+            alive: true,
+        }));
+        panes
     }
 
     /// Remove o cliente de todos os panes (chamado quando a conexão cai).
@@ -316,6 +334,8 @@ impl SessionManager {
         for pane in panes.values_mut() {
             pane.subscribers.retain(|(id, _)| *id != client_id);
         }
+        drop(panes);
+        self.acp.remove_client(client_id);
     }
 
     /// Despeja o scrollback de cada pane em disco (escrita atômica). Chamado no

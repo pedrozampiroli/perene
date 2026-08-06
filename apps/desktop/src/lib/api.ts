@@ -59,4 +59,17 @@ export const api = {
     invoke<string>("git_worktree_add", { root, path, branch, create }),
   createProjectWorktree: (repo: string, base: string, name: string) =>
     invoke<string>("create_project_worktree", { repo, base, name }),
+
+  // Modo ACP — a sessão vive no daemon; `acpSpawn` também atacha (traz o replay).
+  acpSpawn: (
+    paneId: string,
+    cwd: string,
+    program: string,
+    args: string[],
+    allowTerminal: boolean,
+  ) => invoke<void>("acp_spawn", { paneId, cwd, program, args, allowTerminal }),
+  acpPrompt: (paneId: string, text: string) => invoke<void>("acp_prompt", { paneId, text }),
+  acpCancel: (paneId: string) => invoke<void>("acp_cancel", { paneId }),
+  acpPermission: (paneId: string, requestId: number, optionId: string | null) =>
+    invoke<void>("acp_permission", { paneId, requestId, optionId }),
 };

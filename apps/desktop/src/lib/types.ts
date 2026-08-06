@@ -1,7 +1,7 @@
 // Espelho TS do manifest v3 (perene-core::models). Wire em camelCase.
 
 export type Id = string;
-export type PaneKind = "terminal" | "files";
+export type PaneKind = "terminal" | "files" | "acp";
 export type SplitDirection = "horizontal" | "vertical";
 
 export type LayoutNode =
@@ -71,6 +71,8 @@ export interface Settings {
   editorPanelWidth: number;
   locale: string; // "" = seguir o sistema
   onboardingDone: boolean;
+  /** Abrir sessões novas como chat ACP (só as ferramentas com adapter). */
+  acpMode: boolean;
 }
 
 export interface ShellOption {
@@ -137,4 +139,31 @@ export interface Worktree {
   path: string;
   branch: string;
   head: string;
+}
+
+// ── Modo ACP ────────────────────────────────────────────────────────────────
+// Espelho de `perene_protocol::AcpEvent`. O `update` vem cru do agente (o
+// protocolo evolui mais rápido que a nossa UI), por isso é `unknown`.
+
+export interface AcpPermissionOption {
+  optionId: string;
+  name: string;
+  kind?: string | null;
+}
+
+export type AcpEvent =
+  | { kind: "ready" }
+  | { kind: "update"; update: Record<string, unknown> }
+  | {
+      kind: "permission";
+      requestId: number;
+      toolCall: Record<string, unknown>;
+      options: AcpPermissionOption[];
+    }
+  | { kind: "turnEnded"; stopReason: string }
+  | { kind: "failed"; message: string };
+
+export interface AcpMessage {
+  paneId: string;
+  event: AcpEvent;
 }

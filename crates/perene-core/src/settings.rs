@@ -35,6 +35,11 @@ pub struct Settings {
     /// `false` até o usuário concluir (ou pular) o onboarding de boas-vindas.
     #[serde(default)]
     pub onboarding_done: bool,
+    /// Abrir sessões novas em modo ACP (chat estruturado) em vez da CLI no
+    /// terminal. Só vale para as ferramentas que têm adapter; as demais seguem
+    /// no terminal. Desligado por padrão: o terminal é o modo consagrado.
+    #[serde(default)]
+    pub acp_mode: bool,
 }
 
 fn default_true() -> bool {
@@ -59,6 +64,7 @@ impl Default for Settings {
             editor_panel_width: default_editor_panel_width(),
             locale: String::new(),
             onboarding_done: false,
+            acp_mode: false,
         }
     }
 }
@@ -112,6 +118,7 @@ mod tests {
             editor_panel_width: 280,
             locale: "pt-BR".into(),
             onboarding_done: true,
+            acp_mode: true,
         };
         store.save(&s).unwrap();
         assert_eq!(store.load().unwrap(), s);

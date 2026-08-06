@@ -68,6 +68,14 @@
 
     <label class="row">
       <div>
+        <div class="t">{t("settings.acpMode")}</div>
+        <div class="sub">{t("settings.acpModeHint")}</div>
+      </div>
+      <input type="checkbox" checked={app.settings.acpMode} onchange={(e) => app.setAcpMode(e.currentTarget.checked)} />
+    </label>
+
+    <label class="row">
+      <div>
         <div class="t">{t("settings.webgl")}</div>
         <div class="sub">{t("settings.webglHint")}</div>
       </div>

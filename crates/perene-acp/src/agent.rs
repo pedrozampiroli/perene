@@ -111,17 +111,41 @@ impl Agent {
     /// Sobe o processo do agente e começa a falar JSON-RPC pelo stdio dele.
     pub fn spawn(cfg: &SpawnConfig, handler: Arc<dyn AgentHandler>) -> std::io::Result<Self> {
         let mut cmd = Command::new(&cfg.program);
+        // Sem isto o adapter se acha aninhado numa sessão de harness e recusa
+        // abrir sessão (erro interno no `session/new`). Mesma limpeza dos PTYs.
+        for key in perene_core::harness_env::inherited_session_vars() {
+            cmd.env_remove(&key);
+        }
+        // Grupo de processos próprio: o adapter roda via `npx`, que vira `node`.
+        // Sem o grupo, matar o filho direto deixaria o neto vivo — ver [`kill_tree`].
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
         cmd.args(&cfg.args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            // stderr fica herdado: log do adapter aparece no log do daemon.
-            .stderr(Stdio::null());
+            // Capturado, não herdado: o log do adapter é a única pista quando o
+            // handshake falha, mas herdar nosso stderr vazaria o fd para netos
+            // que não conseguimos matar (o `npx` vira `node`) — e aí quem nos
+            // spawnou nunca vê o pipe fechar.
+            .stderr(Stdio::piped());
         if let Some(cwd) = &cfg.cwd {
             cmd.current_dir(cwd);
         }
         let mut child = cmd.spawn()?;
         let stdout = child.stdout.take().expect("stdout pedido acima");
         let stdin = child.stdin.take().expect("stdin pedido acima");
+        if let Some(stderr) = child.stderr.take() {
+            let program = cfg.program.clone();
+            std::thread::spawn(move || {
+                use std::io::BufRead;
+                for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
+                    eprintln!("[acp:{program}] {line}");
+                }
+            });
+        }
         let conn = Connection::start(stdout, stdin, Arc::new(Bridge { handler }));
         Ok(Self {
             conn,
@@ -205,8 +229,37 @@ impl Agent {
 impl Drop for Agent {
     fn drop(&mut self) {
         if let Some(child) = &mut self.child {
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_tree(child);
         }
     }
+}
+
+/// Mata o agente **e seus descendentes**.
+///
+/// `npx` só empacota: quem realmente roda é um `node` filho dele. Matando apenas
+/// o processo que spawnamos, o `node` fica órfão segurando a sessão e ~100 MB
+/// para sempre — um por pane fechado. Com o alvo de RAM do Perene, isso não é
+/// detalhe.
+#[cfg(unix)]
+fn kill_tree(child: &mut Child) {
+    // O filho nasce como líder do próprio grupo (`process_group(0)`), então o
+    // grupo é exatamente ele + descendentes.
+    let pid = child.id() as i32;
+    unsafe {
+        libc::killpg(pid, libc::SIGKILL);
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[cfg(windows)]
+fn kill_tree(child: &mut Child) {
+    // No Windows não há grupo herdado; `taskkill /T` percorre a árvore.
+    let _ = Command::new("taskkill")
+        .args(["/T", "/F", "/PID", &child.id().to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = child.kill();
+    let _ = child.wait();
 }

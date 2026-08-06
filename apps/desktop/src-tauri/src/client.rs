@@ -140,6 +140,9 @@ fn read_loop<R: Read>(stream: R, app: AppHandle) {
             DaemonMessage::Status(st) => {
                 let _ = app.emit(events::PTY_STATUS, st);
             }
+            DaemonMessage::Acp(m) => {
+                let _ = app.emit(events::ACP_EVENT, m);
+            }
             _ => {}
         }
     }
@@ -278,4 +281,60 @@ pub fn terminal_resize(
 #[tauri::command]
 pub fn terminal_kill(state: State<'_, DaemonClient>, pane_id: String) {
     let _ = state.send(&ClientMessage::Kill { pane_id });
+}
+
+// ── Modo ACP ─────────────────────────────────────────────────────────────────
+//
+// Mesma forma dos comandos de terminal: a UI pede, o daemon executa e devolve
+// tudo pelo evento `acp-event`. O `attach` também é responsabilidade daqui —
+// é ele que traz o transcript de volta quando a janela reabre.
+
+#[tauri::command]
+pub fn acp_spawn(
+    app: AppHandle,
+    state: State<'_, DaemonClient>,
+    pane_id: String,
+    cwd: String,
+    program: String,
+    args: Vec<String>,
+    allow_terminal: bool,
+) -> Result<(), String> {
+    state.ensure(&app)?;
+    state.send(&ClientMessage::AcpSpawn {
+        pane_id: pane_id.clone(),
+        cwd,
+        program,
+        args,
+        allow_terminal,
+    })?;
+    state.send(&ClientMessage::Attach { pane_id })?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn acp_prompt(
+    state: State<'_, DaemonClient>,
+    pane_id: String,
+    text: String,
+) -> Result<(), String> {
+    state.send_connected(&ClientMessage::AcpPrompt { pane_id, text })
+}
+
+#[tauri::command]
+pub fn acp_cancel(state: State<'_, DaemonClient>, pane_id: String) {
+    let _ = state.send(&ClientMessage::AcpCancel { pane_id });
+}
+
+#[tauri::command]
+pub fn acp_permission(
+    state: State<'_, DaemonClient>,
+    pane_id: String,
+    request_id: u64,
+    option_id: Option<String>,
+) -> Result<(), String> {
+    state.send_connected(&ClientMessage::AcpPermission {
+        pane_id,
+        request_id,
+        option_id,
+    })
 }

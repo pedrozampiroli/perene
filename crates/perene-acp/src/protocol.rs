@@ -188,7 +188,9 @@ pub struct SessionUpdateParams {
 
 // ── permissão ────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
+/// `Serialize` porque as opções são repassadas cruas até a UI, que as desenha
+/// como botões: quem decide o texto é o agente, não nós.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionOption {
     pub option_id: String,

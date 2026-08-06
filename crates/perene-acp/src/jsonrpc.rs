@@ -39,6 +39,36 @@ impl RpcError {
             message: msg.into(),
         }
     }
+
+    /// Lê um objeto `error` do wire.
+    ///
+    /// O `message` costuma ser genérico ("Internal error"); o que explica de
+    /// fato o problema vive em `data` (ex.: `Invalid permissions.defaultMode`).
+    /// Sem juntar os dois, o usuário recebe um erro que não ajuda em nada.
+    pub fn from_wire(error: &Value) -> Self {
+        let code = error["code"].as_i64().unwrap_or(-32603);
+        let message = error["message"]
+            .as_str()
+            .unwrap_or("erro desconhecido")
+            .to_string();
+        let details = match &error["data"] {
+            Value::Null => String::new(),
+            Value::String(s) => s.clone(),
+            Value::Object(map) => map
+                .get("details")
+                .and_then(|d| d.as_str().map(String::from))
+                .unwrap_or_else(|| error["data"].to_string()),
+            other => other.to_string(),
+        };
+        Self {
+            code,
+            message: if details.is_empty() {
+                message
+            } else {
+                format!("{message}: {details}")
+            },
+        }
+    }
 }
 
 impl std::fmt::Display for RpcError {
@@ -175,13 +205,7 @@ fn spawn_reader<R: Read + Send + 'static>(
                         let res = if msg["error"].is_null() {
                             Ok(msg["result"].clone())
                         } else {
-                            Err(RpcError {
-                                code: msg["error"]["code"].as_i64().unwrap_or(-32603),
-                                message: msg["error"]["message"]
-                                    .as_str()
-                                    .unwrap_or("erro desconhecido")
-                                    .to_string(),
-                            })
+                            Err(RpcError::from_wire(&msg["error"]))
                         };
                         let _ = tx.send(res);
                     }

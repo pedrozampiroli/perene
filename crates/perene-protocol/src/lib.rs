@@ -53,6 +53,7 @@ pub mod events {
     pub const PTY_OUTPUT: &str = "pty-output";
     pub const PTY_EXIT: &str = "pty-exit";
     pub const PTY_STATUS: &str = "pty-status";
+    pub const ACP_EVENT: &str = "acp-event";
 }
 
 /// Versão do protocolo IPC UI ⇄ daemon. Bump quando o wire mudar de forma
@@ -85,6 +86,45 @@ pub enum PaneState {
 pub struct PaneStatus {
     pub pane_id: PaneId,
     pub state: PaneState,
+}
+
+// ── Modo ACP ─────────────────────────────────────────────────────────────────
+//
+// A sessão ACP vive no DAEMON (como os PTYs), não na UI: fechar a janela não
+// pode matar a conversa. A UI atacha, recebe o replay do transcript e segue o
+// streaming — mesmo contrato do terminal.
+//
+// O payload do `update` viaja como `Value` de propósito: mantém este crate sem
+// depender do `perene-acp` e tolera o protocolo evoluir.
+
+/// Evento de uma sessão ACP, do daemon para a UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum AcpEvent {
+    /// Sessão pronta para receber prompts.
+    Ready,
+    /// Streaming do turno (o `session/update` cru do ACP).
+    Update { update: serde_json::Value },
+    /// O agente quer permissão. A UI responde com [`ClientMessage::AcpPermission`].
+    #[serde(rename_all = "camelCase")]
+    Permission {
+        request_id: u64,
+        tool_call: serde_json::Value,
+        options: serde_json::Value,
+    },
+    /// O turno terminou.
+    #[serde(rename_all = "camelCase")]
+    TurnEnded { stop_reason: String },
+    /// Algo falhou (subir o agente, prompt, etc.).
+    Failed { message: String },
+}
+
+/// Evento de sessão ACP endereçado a um pane.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpMessage {
+    pub pane_id: PaneId,
+    pub event: AcpEvent,
 }
 
 /// Metadados de um pane vivo no daemon.
@@ -120,6 +160,35 @@ pub enum ClientMessage {
     Ping,
     /// Pede shutdown limpo do daemon (flush de scrollback).
     Shutdown,
+
+    // ── Modo ACP ────────────────────────────────────────────────────────────
+    /// Sobe um agente ACP para este pane (idempotente por `pane_id`).
+    #[serde(rename_all = "camelCase")]
+    AcpSpawn {
+        pane_id: PaneId,
+        cwd: String,
+        /// Programa do adapter e argumentos (ex.: `npx -y @…/claude-agent-acp`).
+        program: String,
+        args: Vec<String>,
+        /// Se `false`, o agente NÃO pode nos pedir para rodar comandos.
+        #[serde(default)]
+        allow_terminal: bool,
+    },
+    /// Manda um prompt para a sessão.
+    #[serde(rename_all = "camelCase")]
+    AcpPrompt { pane_id: PaneId, text: String },
+    /// Interrompe o turno atual.
+    #[serde(rename_all = "camelCase")]
+    AcpCancel { pane_id: PaneId },
+    /// Resposta do usuário a um pedido de permissão.
+    #[serde(rename_all = "camelCase")]
+    AcpPermission {
+        pane_id: PaneId,
+        request_id: u64,
+        /// `None` = cancelado (o usuário fechou sem escolher).
+        #[serde(default)]
+        option_id: Option<String>,
+    },
 }
 
 /// Mensagens que o daemon envia à UI. Uma por linha (JSON-lines).
@@ -138,6 +207,8 @@ pub enum DaemonMessage {
     Exit(TerminalExit),
     /// O que a sessão está fazendo (para o indicador na UI).
     Status(PaneStatus),
+    /// Evento de uma sessão ACP (streaming, permissão, fim de turno).
+    Acp(AcpMessage),
     /// Resposta ao `ListPanes`.
     Panes { panes: Vec<PaneInfo> },
     /// Resposta ao `Ping`.
@@ -200,6 +271,57 @@ mod tests {
         matches!(back, ClientMessage::Attach { .. })
             .then_some(())
             .expect("deve voltar como Attach");
+    }
+
+    #[test]
+    fn acp_client_messages_are_camel_case_on_the_wire() {
+        // `rename_all` num enum só renomeia VARIANTE, não campo: cada variante
+        // com campos precisa do seu próprio atributo. Já quebrou o app uma vez
+        // (o front lia `paneId` e vinha `pane_id`), então fica testado.
+        let line = encode_line(&ClientMessage::AcpSpawn {
+            pane_id: "pane_1".into(),
+            cwd: "/tmp".into(),
+            program: "npx".into(),
+            args: vec!["-y".into()],
+            allow_terminal: true,
+        })
+        .unwrap();
+        assert!(line.contains("\"paneId\""), "linha: {line}");
+        assert!(line.contains("\"allowTerminal\""), "linha: {line}");
+
+        let line = encode_line(&ClientMessage::AcpPermission {
+            pane_id: "pane_1".into(),
+            request_id: 7,
+            option_id: Some("allow".into()),
+        })
+        .unwrap();
+        assert!(line.contains("\"requestId\":7"), "linha: {line}");
+        assert!(line.contains("\"optionId\":\"allow\""), "linha: {line}");
+    }
+
+    #[test]
+    fn acp_events_round_trip_with_their_payload() {
+        let msg = DaemonMessage::Acp(AcpMessage {
+            pane_id: "pane_1".into(),
+            event: AcpEvent::Permission {
+                request_id: 3,
+                tool_call: serde_json::json!({"toolCallId": "c1"}),
+                options: serde_json::json!([{"optionId": "allow"}]),
+            },
+        });
+        let line = encode_line(&msg).unwrap();
+        assert!(line.contains("\"kind\":\"permission\""), "linha: {line}");
+        assert!(line.contains("\"requestId\":3"), "linha: {line}");
+        assert!(line.contains("\"toolCall\""), "linha: {line}");
+
+        let back: DaemonMessage = decode_line(line.trim_end()).unwrap();
+        match back {
+            DaemonMessage::Acp(AcpMessage {
+                event: AcpEvent::Permission { request_id, .. },
+                ..
+            }) => assert_eq!(request_id, 3),
+            other => panic!("voltou como {other:?}"),
+        }
     }
 
     #[test]

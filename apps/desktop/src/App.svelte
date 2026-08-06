@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
-  import { PTY_STATUS } from "./lib/events";
-  import type { PaneState } from "./lib/types";
+  import { ACP_EVENT, PTY_STATUS } from "./lib/events";
+  import type { AcpMessage, PaneState } from "./lib/types";
+  import { acp } from "./lib/acp.svelte";
   import { app } from "./lib/store.svelte";
   import Sidebar from "./components/Sidebar.svelte";
   import TabGrid from "./components/TabGrid.svelte";
@@ -42,10 +43,15 @@
     const un = listen<{ paneId: string; state: PaneState }>(PTY_STATUS, (e) =>
       app.setPaneStatus(e.payload.paneId, e.payload.state),
     );
+    // Conversas ACP: um listener só, roteado por paneId (igual ao de status).
+    const unAcp = listen<AcpMessage>(ACP_EVENT, (e) =>
+      acp.apply(e.payload.paneId, e.payload.event),
+    );
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
       void un.then((f) => f());
+      void unAcp.then((f) => f());
     };
   });
 

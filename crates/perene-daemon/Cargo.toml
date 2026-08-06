@@ -9,6 +9,7 @@ authors.workspace = true
 [dependencies]
 perene-protocol = { workspace = true }
 perene-core = { workspace = true }
+perene-acp = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 portable-pty = { workspace = true }

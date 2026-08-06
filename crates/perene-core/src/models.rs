@@ -85,13 +85,15 @@ pub struct Tab {
     pub updated_at: i64,
 }
 
-/// Tipo de pane: terminal (default) ou visualizador de arquivos (M5).
+/// Tipo de pane: terminal (default), visualizador de arquivos (M5) ou sessão
+/// ACP — a mesma CLI, só que falando JSON-RPC em vez de desenhar uma TUI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PaneKind {
     #[default]
     Terminal,
     Files,
+    Acp,
 }
 
 /// Um terminal = uma sessão do daemon (indexada por `id`).

@@ -250,8 +250,17 @@ fn dispatch(
                 let _ = tx.send(DaemonMessage::Error { message: e });
             }
         }
-        ClientMessage::Attach { pane_id } => mgr.attach(client_id, tx, &pane_id),
-        ClientMessage::Detach { pane_id } => mgr.detach(client_id, &pane_id),
+        // Pane ACP e pane de terminal atacham pelo mesmo comando: quem sabe o
+        // tipo é o daemon, não a UI.
+        ClientMessage::Attach { pane_id } => {
+            if !mgr.acp().attach(client_id, tx, &pane_id) {
+                mgr.attach(client_id, tx, &pane_id);
+            }
+        }
+        ClientMessage::Detach { pane_id } => {
+            mgr.acp().detach(client_id, &pane_id);
+            mgr.detach(client_id, &pane_id);
+        }
         ClientMessage::Write { pane_id, data_b64 } => {
             if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data_b64.as_bytes())
             {
@@ -263,7 +272,10 @@ fn dispatch(
             cols,
             rows,
         } => mgr.resize(&pane_id, cols, rows),
-        ClientMessage::Kill { pane_id } => mgr.kill(&pane_id),
+        ClientMessage::Kill { pane_id } => {
+            mgr.acp().kill(&pane_id);
+            mgr.kill(&pane_id);
+        }
         ClientMessage::ListPanes => {
             let _ = tx.send(DaemonMessage::Panes {
                 panes: mgr.list_panes(),
@@ -277,6 +289,24 @@ fn dispatch(
             mgr.flush_scrollback();
             std::process::exit(0);
         }
+
+        // ── Modo ACP ────────────────────────────────────────────────────────
+        ClientMessage::AcpSpawn {
+            pane_id,
+            cwd,
+            program,
+            args,
+            allow_terminal,
+        } => mgr
+            .acp()
+            .spawn(&pane_id, &cwd, &program, &args, allow_terminal),
+        ClientMessage::AcpPrompt { pane_id, text } => mgr.acp().prompt(&pane_id, &text),
+        ClientMessage::AcpCancel { pane_id } => mgr.acp().cancel(&pane_id),
+        ClientMessage::AcpPermission {
+            pane_id,
+            request_id,
+            option_id,
+        } => mgr.acp().answer_permission(&pane_id, request_id, option_id),
     }
     ControlFlow::Continue(())
 }

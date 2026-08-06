@@ -22,28 +22,12 @@ pub fn build_command(req: &SpawnRequest) -> CommandBuilder {
     cmd
 }
 
-/// Remove variáveis de ambiente de *sessão de harness* herdadas.
-///
-/// Se o Perene for aberto de dentro de uma sessão do Claude Code (ou de outro
-/// harness), o processo herda marcadores como `CLAUDE_CODE_CHILD_SESSION` e
-/// `CLAUDE_CODE_SESSION_ID`. Herdados pelo `claude` que abrimos no PTY, eles
-/// **desligam o salvamento do transcript** ("Transcript saving is off") e a
-/// conversa nunca é gravada em disco — então o `--resume` depois falha com
-/// "No conversation found with session ID". Os terminais precisam nascer limpos.
+/// Remove variáveis de *sessão de harness* herdadas — ver
+/// [`perene_core::harness_env`] para o porquê. A lista é compartilhada com o
+/// modo ACP de propósito: os dois caminhos não podem divergir.
 fn sanitize_env(cmd: &mut CommandBuilder) {
-    const EXACT: &[&str] = &[
-        "CLAUDECODE",
-        "CLAUDE_PID",
-        "CLAUDE_EFFORT",
-        "CODEX_SANDBOX",
-        "CODEX_SESSION_ID",
-        "OPENCODE_SESSION_ID",
-    ];
-    for (key, _) in std::env::vars() {
-        let up = key.to_ascii_uppercase();
-        if up.starts_with("CLAUDE_CODE_") || EXACT.contains(&up.as_str()) {
-            cmd.env_remove(&key);
-        }
+    for key in perene_core::harness_env::inherited_session_vars() {
+        cmd.env_remove(&key);
     }
 }
 

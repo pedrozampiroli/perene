@@ -27,6 +27,27 @@ export function needsSessionId(profileId: string): boolean {
   return profileId === "claude";
 }
 
+/** Adapter ACP de uma ferramenta. `null` = só existe em modo terminal. */
+export interface AcpConfig {
+  program: string;
+  args: string[];
+}
+
+// Roda via `npx` de propósito: nada para instalar globalmente, e a versão
+// acompanha o adapter oficial.
+export function acpConfig(profileId: string): AcpConfig | null {
+  switch (profileId) {
+    case "claude":
+      return { program: "npx", args: ["-y", "@zed-industries/claude-agent-acp"] };
+    default:
+      return null;
+  }
+}
+
+export function supportsAcp(profileId: string): boolean {
+  return acpConfig(profileId) !== null;
+}
+
 function yoloFlag(profileId: string, on: boolean): string {
   if (!on) return "";
   switch (profileId) {

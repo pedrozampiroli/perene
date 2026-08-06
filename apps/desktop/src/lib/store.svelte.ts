@@ -5,10 +5,11 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { acp } from "./acp.svelte";
 import { api } from "./api";
 import { i18n, detectLocale, t } from "./i18n.svelte";
 import { baseName, isInWorktree } from "./paths";
-import { PROFILES, buildCommand, needsSessionId } from "./profiles";
+import { PROFILES, buildCommand, needsSessionId, supportsAcp } from "./profiles";
 import type {
   LayoutNode,
   Manifest,
@@ -174,6 +175,7 @@ class AppStore {
     editorPanelWidth: 240,
     locale: "",
     onboardingDone: false,
+    acpMode: false,
   });
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
@@ -663,9 +665,11 @@ class AppStore {
   }
 
   private makePane(profileId: string, cwd: string): Pane {
+    // Modo ACP só vale para quem tem adapter; o resto continua no terminal.
+    const useAcp = this.settings.acpMode && supportsAcp(profileId);
     const pane: Pane = {
       id: newId("pane"),
-      kind: "terminal",
+      kind: useAcp ? "acp" : "terminal",
       toolProfileId: profileId,
       workingDirectory: cwd,
       harnessSessionId: needsSessionId(profileId) ? uuid() : null,
@@ -889,6 +893,12 @@ class AppStore {
     this.saveSettings();
   }
 
+  /** Vale para sessões NOVAS: as abertas seguem no modo em que nasceram. */
+  setAcpMode(v: boolean): void {
+    this.settings.acpMode = v;
+    this.saveSettings();
+  }
+
   /** Largura da sidebar (arrastar) — salva com debounce. */
   setSidebarWidth(px: number): void {
     this.settings.sidebarWidth = Math.max(160, Math.min(560, Math.round(px)));
@@ -1010,7 +1020,10 @@ class AppStore {
 
   // ── Internos ─────────────────────────────────────────────────────────────
   private killPane(paneId: string): void {
+    // O daemon resolve o tipo (PTY ou sessão ACP) pelo id.
     void invoke("terminal_kill", { paneId });
+    acp.forget(paneId);
+    delete this.paneStatus[paneId];
   }
 
   private syncActivePane(): void {
