@@ -2,7 +2,7 @@
 
 > **Leia isto primeiro ao retomar o projeto.** Complementa o `PLAN.md` (plano
 > original dos milestones), o `CLAUDE.md` (regras operacionais) e o `git log`.
-> Atualizado em 2026-08-04.
+> Atualizado em 2026-08-06.
 
 ## Estado atual
 
@@ -16,6 +16,8 @@ real, e o app é usado no dia a dia.
 - **Instalado** em `/Applications/Perene.app` (macOS). Build local:
   `.dmg` sai em `target/release/bundle/dmg/`.
 - **RAM:** ~109 MB com 5 terminais (alvo do plano: < 150 MB).
+- **Modo ACP** (chat estruturado em vez da CLI no terminal) implementado no
+  branch `feat/acp-mode`, desligado por padrão — ver a seção "Modo ACP".
 
 ## Como rodar, testar e instalar
 
@@ -54,8 +56,12 @@ crates/
   perene-protocol/   tipos IPC (ClientMessage/DaemonMessage) + framing JSON-lines
   perene-core/       models (manifest v3) · store (atômico) · settings · paths
                      history · usage · sqlite   — Rust puro, sem deps de UI
+  perene-acp/        cliente do Agent Client Protocol: jsonrpc (genérico sobre
+                     Read/Write) · protocol (tipos do wire) · agent (spawn + API)
   perene-daemon/     session (1 PTY/pane + scrollback) · server (unix socket /
                      named pipe, single-instance) · pty (login shell) · winpipe
+                     acp (sessões ACP + transcript) · acp_client (fs/terminal
+                     que o agente pede) · status (indicador) · bin/ agente falso
 apps/desktop/
   src-tauri/src/     lib.rs (registra os comandos) · main.rs (--daemon reexec)
                      client.rs (cliente do daemon) · state.rs (manifest/settings/
@@ -68,7 +74,7 @@ apps/desktop/
                      PaneView · FilesPane · FileTree · GitWidget · ToolIcon
                      SettingsModal · HistoryModal · UsageModal · NameModal
                      ConfirmModal · NewSessionModal · ContextMenu · SearchPalette
-                     Onboarding
+                     Onboarding · StatusDot · AcpPane
 ```
 
 **A UI é descartável de propósito**: a lógica vive nos crates Rust puros, então
@@ -96,6 +102,9 @@ Estado do app em `~/.perene2/` (`%APPDATA%\perene2\` no Windows):
   projeto · worktree existente · worktree nova. A nova nasce em
   `.perene/worktrees/<nome>` e o `.perene/` entra no `.gitignore` automaticamente
   (`create_project_worktree`).
+- **Sessão ACP:** UI → `acp_spawn` → o daemon sobe o adapter e guarda um
+  *transcript*; a UI atacha e recebe o replay. Fechar a janela não mata a
+  conversa — mesmo contrato do scrollback. Detalhes na seção "Modo ACP".
 - **i18n:** `t("chave")` em tudo; `import.meta.glob` carrega os JSONs, então
   **idioma novo = duplicar `en.json`** e traduzir. Chave faltando cai no inglês.
 
@@ -109,7 +118,55 @@ Estado do app em `~/.perene2/` (`%APPDATA%\perene2\` no Windows):
 | Editor | multi-abas (undo/cursor por arquivo), ⌘S, syntax highlight, diff lado a lado, árvore com status git |
 | Git | branch/ahead/behind no topo, switch/create branch, fetch/pull/push, PR via `gh`, commits (log + `git show`), worktrees, commit box |
 | Busca | ⌘P quick open (fuzzy), ⌘⇧F busca global (ripgrep), ⌘⇧H substituição global, ⌘F/⌘H no arquivo |
+| Indicador | estado de cada sessão (rodando/esperando aprovação/pronto/erro) inferido do stream do PTY (`status.rs`) ou emitido pela sessão ACP; `StatusDot` na aba e no pane |
+| Modo ACP | opcional: chat estruturado por JSON-RPC, com `fs/*` e `terminal/*` executados pelo Perene dentro do diretório da sessão |
 | UX | menus de contexto, modais de nomeação, confirmação antes de excluir/fechar, onboarding com spotlight, i18n (en/pt-BR/es), usage de tokens |
+
+## Modo ACP (opcional, desligado por padrão)
+
+O modo consagrado é a CLI rodando num PTY. O **ACP** ([Agent Client
+Protocol](https://agentclientprotocol.com)) é um segundo modo, ligado em
+Configurações → "Modo ACP", e vale só para as ferramentas com adapter (hoje o
+Claude, via `npx -y @zed-industries/claude-agent-acp`). Sessões já abertas
+seguem no modo em que nasceram; o histórico sempre retoma no terminal, porque
+retomar por id é um recurso da CLI.
+
+**Por que existe:** no terminal, a CLI lê arquivos e roda comandos por conta
+própria e o Perene só vê pixels. No ACP a relação inverte — o agente *pede* e
+quem executa somos nós. Isso dá escopo (nada fora do diretório da sessão) e
+visibilidade (cada ferramenta vira um cartão no chat).
+
+**Onde cada coisa mora:**
+
+| Camada | Arquivo | Responsabilidade |
+|---|---|---|
+| Protocolo JSON-RPC | `crates/perene-acp/src/jsonrpc.rs` | bidirecional, genérico sobre `Read`/`Write` (testável com pipes) |
+| Tipos do wire | `crates/perene-acp/src/protocol.rs` | variantes desconhecidas caem em `Other` — o protocolo evolui |
+| Processo do agente | `crates/perene-acp/src/agent.rs` | spawn, handshake, prompt, cancel, cauda do stderr |
+| Sessão viva | `crates/perene-daemon/src/acp.rs` | transcript p/ replay, permissões, status, login shell |
+| O que o agente pede | `crates/perene-daemon/src/acp_client.rs` | `fs/*` e `terminal/*`, presos ao diretório da sessão |
+| IPC | `crates/perene-protocol/src/lib.rs` | `AcpSpawn/AcpPrompt/AcpCancel/AcpPermission` · `DaemonMessage::Acp` |
+| UI | `apps/desktop/src/components/AcpPane.svelte` + `src/lib/acp.svelte.ts` | chat, cartões de ferramenta, diálogo de permissão |
+
+**Decisões que não são óbvias:**
+
+- **A sessão vive no daemon**, não na UI. Se vivesse na janela, fechá-la mataria
+  a conversa — o oposto do que o Perene promete. O transcript é o análogo do
+  scrollback: no reattach ele é reproduzido inteiro.
+- **Permissão bloqueia o agente de verdade.** O handler roda numa thread do
+  JSON-RPC e espera num canal indexado por `request_id`; a resposta da UI
+  destrava aquele pedido específico. Timeout de 30 min evita prender o processo
+  para sempre se ninguém responder.
+- **Escopo é rede de segurança, não política.** Quem decide se a ação é
+  permitida é o `session/request_permission` (vai ao usuário). O
+  `acp_client.rs` só garante que nada aconteça fora do diretório da sessão —
+  inclusive contra `..` e symlink, canonizando o ancestral existente.
+- **Adapter pelo login shell.** Ver Gotcha #13.
+
+**Testar:** `cargo test -p perene-daemon --test acp` roda o e2e contra um agente
+falso de verdade (`src/bin/perene-fake-acp-agent.rs`) — processo, stdio e
+JSON-RPC como em produção, sem rede nem conta de IA. Contra o adapter real:
+`cargo test -p perene-daemon --test acp -- --ignored --nocapture`.
 
 ## Convenções (não quebrar)
 
@@ -178,6 +235,30 @@ Estado do app em `~/.perene2/` (`%APPDATA%\perene2\` no Windows):
     varra segredos e **olhe o screenshot**. Uma captura do app pegou repositório
     privado da empresa, PR interna e URLs de CI — foi descartada.
 
+13. **O adapter ACP precisa de login shell — e de erro que diga o motivo.**
+    O app aberto pelo Finder herda PATH mínimo (`/usr/bin:/bin:...`): o `npx` do
+    nvm/homebrew **não existe ali**, então o ACP falharia só para quem não abre o
+    Perene de um terminal. `acp.rs::login_shell_command()` envolve o adapter em
+    `$SHELL -lc 'exec ...'` (com `exec` para o grupo de processos continuar
+    certo). Como o shell no meio transforma "programa não encontrado" em "a
+    conexão fechou", guardamos a **cauda do stderr** do adapter e a anexamos à
+    falha do handshake — é ela que diz `command not found` ou
+    `Invalid permissions.defaultMode`.
+14. **`npx` vira `node`: matar o filho direto deixa neto vivo.** Cada pane ACP
+    fechado vazava um adapter (~100 MB de node) para sempre. O agente nasce em
+    process group próprio (`process_group(0)`) e o kill vai no grupo
+    (`taskkill /T` no Windows). O teste
+    `killing_the_pane_takes_the_whole_process_tree_down` falha se o grupo sair.
+15. **O erro do JSON-RPC mora em `data`, não em `message`.** O adapter responde
+    `"Internal error"` e põe o motivo real em `data.details`. `RpcError::from_wire`
+    junta os dois; sem isso, toda falha vira a mesma frase inútil.
+16. **`permissions.defaultMode: "auto"` quebra o adapter atual.** O
+    `@zed-industries/claude-agent-acp` 0.23.1 embute um `claude-agent-sdk`
+    (0.2.83) que não conhece esse valor e recusa o `session/new` com
+    *"Invalid permissions.defaultMode: auto."*. É skew de versão entre o adapter
+    e o Claude Code do usuário, não bug nosso — mas o modo ACP não sobe enquanto
+    a chave estiver no `~/.claude/settings.json`.
+
 ## Limitações conhecidas / próximos passos
 
 - **Windows**: funcional desde 2026-07-28 — o IPC do daemon virou named pipe
@@ -195,6 +276,11 @@ Estado do app em `~/.perene2/` (`%APPDATA%\perene2\` no Windows):
 - **`bundle_dmg.sh` falha às vezes** no `npm run tauri build` (o `.app` sai
   normal, só o `.dmg` não). Não investigado — bloqueia gerar release com
   instalador.
+- **Modo ACP**: só o Claude tem adapter mapeado (`profiles.ts::acpConfig`).
+  Falta `session/load` (retomar conversa ACP por id, hoje o histórico cai no
+  terminal), anexar imagem no prompt e renderizar markdown/diff nos cartões de
+  ferramenta. E não foi possível validar um turno completo contra o adapter real
+  nesta máquina por causa do Gotcha #16.
 - **Fila sugerida**: (1) cwd tracking (OSC 7); (2) fallback nativo da busca
   global; (3) resolver o `.dmg` e gerar release v0.1.0 com artefatos (o job
   `bundle` roda em tags `v*` ou dispatch manual).

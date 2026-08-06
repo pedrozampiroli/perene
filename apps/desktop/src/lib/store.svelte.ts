@@ -1054,6 +1054,9 @@ class AppStore {
     if (!ws) return;
     const pane: Pane = {
       id: newId("pane"),
+      // Sempre terminal, mesmo com o modo ACP ligado: retomar pelo id é um
+      // recurso da CLI (`claude --resume <id>`). Abrir como chat ACP começaria
+      // uma conversa nova sem avisar — o oposto do que o usuário pediu.
       kind: "terminal",
       toolProfileId: rec.harness,
       workingDirectory: rec.projectPath,
