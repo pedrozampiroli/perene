@@ -74,6 +74,16 @@
       <input type="checkbox" checked={app.settings.acpMode} onchange={(e) => app.setAcpMode(e.currentTarget.checked)} />
     </label>
 
+    {#if app.settings.acpMode}
+      <label class="row">
+        <div>
+          <div class="t">{t("settings.acpTerminal")}</div>
+          <div class="sub">{t("settings.acpTerminalHint")}</div>
+        </div>
+        <input type="checkbox" checked={app.settings.acpTerminal} onchange={(e) => app.setAcpTerminal(e.currentTarget.checked)} />
+      </label>
+    {/if}
+
     <label class="row">
       <div>
         <div class="t">{t("settings.webgl")}</div>

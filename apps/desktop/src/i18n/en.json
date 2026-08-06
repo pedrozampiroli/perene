@@ -99,6 +99,8 @@
   "settings.askWorktreeHint": "When opening a session in a repo, offers to create an isolated worktree.",
   "settings.acpMode": "ACP mode",
   "settings.acpModeHint": "Open new sessions as a structured chat instead of the CLI in a terminal. Applies to tools that ship an adapter (Claude); the others stay in the terminal.",
+  "settings.acpTerminal": "Let the agent run commands",
+  "settings.acpTerminalHint": "In ACP mode, Perene runs the commands the agent asks for — always inside the session directory, and shown in the chat. Off means it cannot even ask.",
   "acp.badge": "ACP",
   "acp.starting": "Starting the agent…",
   "acp.you": "You",

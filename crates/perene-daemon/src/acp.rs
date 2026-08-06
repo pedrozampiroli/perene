@@ -17,14 +17,15 @@ use std::thread;
 use std::time::Duration;
 
 use parking_lot::Mutex;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use perene_acp::{
     Agent, AgentEvent, AgentHandler, ClientCapabilities, FsCapabilities, PermissionOutcome,
-    RequestPermissionParams, SpawnConfig,
+    RequestPermissionParams, RpcError, SpawnConfig,
 };
 use perene_protocol::{AcpEvent, AcpMessage, DaemonMessage, PaneId, PaneState, PaneStatus};
 
+use crate::acp_client::ClientTools;
 use crate::status::DONE_TTL;
 
 /// Quanto esperamos o usuário decidir uma permissão antes de desistir. Generoso
@@ -53,10 +54,13 @@ struct AcpSession {
     state_gen: AtomicU64,
     /// `true` depois do `kill`: encerramento pedido por nós não é erro.
     closing: AtomicBool,
+    /// Executor do que o agente pede (`fs/*`, `terminal/*`), preso ao diretório
+    /// da sessão.
+    tools: ClientTools,
 }
 
 impl AcpSession {
-    fn new(pane_id: &str) -> Self {
+    fn new(pane_id: &str, cwd: &str, allow_terminal: bool) -> Self {
         Self {
             pane_id: pane_id.to_string(),
             agent: Mutex::new(None),
@@ -68,6 +72,7 @@ impl AcpSession {
             state: Mutex::new(PaneState::Idle),
             state_gen: AtomicU64::new(0),
             closing: AtomicBool::new(false),
+            tools: ClientTools::new(cwd, allow_terminal),
         }
     }
 
@@ -168,6 +173,11 @@ impl AgentHandler for AcpSession {
             }
         }
     }
+
+    /// `fs/*` e `terminal/*`: o agente pede, nós executamos — dentro do escopo.
+    fn on_client_method(&self, method: &str, params: Value) -> Result<Value, RpcError> {
+        self.tools.handle(method, params)
+    }
 }
 
 /// Todas as sessões ACP do daemon.
@@ -210,7 +220,7 @@ impl AcpManager {
             if sessions.contains_key(pane_id) {
                 return;
             }
-            let session = Arc::new(AcpSession::new(pane_id));
+            let session = Arc::new(AcpSession::new(pane_id, cwd, allow_terminal));
             sessions.insert(pane_id.to_string(), Arc::clone(&session));
             session
         };
@@ -451,7 +461,7 @@ mod tests {
     fn permission_answer_unblocks_the_waiting_agent() {
         // Sem processo nenhum: exercita só a correlação request_id → canal, que
         // é o que trava o agente de verdade.
-        let session = Arc::new(AcpSession::new("pane_1"));
+        let session = Arc::new(AcpSession::new("pane_1", ".", false));
         let mgr = manager();
         mgr.sessions
             .lock()
@@ -490,7 +500,7 @@ mod tests {
 
     #[test]
     fn attach_replays_the_transcript() {
-        let session = Arc::new(AcpSession::new("pane_1"));
+        let session = Arc::new(AcpSession::new("pane_1", ".", false));
         let mgr = manager();
         mgr.sessions
             .lock()

@@ -31,11 +31,10 @@
     const cfg = p ? acpConfig(p.toolProfileId) : null;
     if (!p || !cfg) return;
     acp.reset(paneId);
-    // `allowTerminal: false` enquanto os métodos `terminal/*` não estão
-    // implementados (fase 3): declarar uma capacidade que não temos faria o
-    // agente pedir execução e levar "method not found" no meio do turno.
+    // Quem roda os comandos somos nós, presos ao diretório da sessão. Desligar
+    // isto nas configurações significa que o agente sequer pode pedir.
     api
-      .acpSpawn(paneId, p.workingDirectory, cfg.program, cfg.args, false)
+      .acpSpawn(paneId, p.workingDirectory, cfg.program, cfg.args, app.settings.acpTerminal)
       .catch(() => {}); // o erro real chega como evento `failed`, com mensagem
   });
 

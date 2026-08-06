@@ -73,6 +73,8 @@ export interface Settings {
   onboardingDone: boolean;
   /** Abrir sessões novas como chat ACP (só as ferramentas com adapter). */
   acpMode: boolean;
+  /** No modo ACP, deixar o agente pedir que o Perene rode comandos. */
+  acpTerminal: boolean;
 }
 
 export interface ShellOption {

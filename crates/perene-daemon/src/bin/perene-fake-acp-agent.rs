@@ -45,6 +45,7 @@ fn main() {
     let mut out = stdout.lock();
 
     let mut line = String::new();
+    let mut reply_buf = String::new();
     loop {
         line.clear();
         match reader.read_line(&mut line) {
@@ -74,6 +75,73 @@ fn main() {
                     .as_str()
                     .unwrap_or("")
                     .to_string();
+
+                // `#fs <caminho>` e `#sh <comando>`: exercitam o caminho INVERSO
+                // (o agente pedindo que o cliente execute), que é o ponto do ACP.
+                if let Some(rest) = prompt.strip_prefix('#') {
+                    let (kind, arg) = rest.split_once(' ').unwrap_or((rest, ""));
+                    let (method, params) = match kind {
+                        "fs" => (
+                            "fs/read_text_file",
+                            json!({"sessionId":"sess_fake","path":arg}),
+                        ),
+                        _ => (
+                            "terminal/create",
+                            json!({"sessionId":"sess_fake","command":"/bin/sh",
+                                   "args":["-c", arg]}),
+                        ),
+                    };
+                    send(
+                        &mut out,
+                        json!({"jsonrpc":"2.0","id":9100,"method":method,"params":params}),
+                    );
+                    let mut reply = String::new();
+                    let _ = reader.read_line(&mut reply);
+                    let reply: Value = serde_json::from_str(&reply).unwrap_or(json!({}));
+
+                    let text = if kind == "fs" {
+                        reply["result"]["content"]
+                            .as_str()
+                            .map(String::from)
+                            .unwrap_or_else(|| format!("erro: {}", reply["error"]))
+                    } else if !reply["error"].is_null() {
+                        // Recusa no `terminal/create`: reporta ela, não o erro
+                        // derivado de seguir sem terminal nenhum.
+                        format!("erro: {}", reply["error"]["message"])
+                    } else {
+                        let term = reply["result"]["terminalId"].clone();
+                        // Espera terminar e depois lê a saída — como um agente real.
+                        for (id, method) in
+                            [(9101, "terminal/wait_for_exit"), (9102, "terminal/output")]
+                        {
+                            send(
+                                &mut out,
+                                json!({"jsonrpc":"2.0","id":id,"method":method,
+                                       "params":{"sessionId":"sess_fake","terminalId":term}}),
+                            );
+                            reply_buf.clear();
+                            let _ = reader.read_line(&mut reply_buf);
+                        }
+                        let last: Value = serde_json::from_str(&reply_buf).unwrap_or(json!({}));
+                        last["result"]["output"]
+                            .as_str()
+                            .map(String::from)
+                            .unwrap_or_else(|| format!("erro: {}", last["error"]))
+                    };
+                    send(
+                        &mut out,
+                        json!({"jsonrpc":"2.0","method":"session/update","params":{
+                            "sessionId":"sess_fake",
+                            "update":{"sessionUpdate":"agent_message_chunk",
+                                      "content":{"type":"text","text":format!("resultado: {text}")}}}}),
+                    );
+                    send(
+                        &mut out,
+                        json!({"jsonrpc":"2.0","id":id,"result":{"stopReason":"end_turn"}}),
+                    );
+                    continue;
+                }
+
                 send(
                     &mut out,
                     json!({"jsonrpc":"2.0","method":"session/update","params":{

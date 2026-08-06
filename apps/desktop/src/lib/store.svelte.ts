@@ -176,6 +176,7 @@ class AppStore {
     locale: "",
     onboardingDone: false,
     acpMode: false,
+    acpTerminal: true,
   });
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
@@ -896,6 +897,11 @@ class AppStore {
   /** Vale para sessões NOVAS: as abertas seguem no modo em que nasceram. */
   setAcpMode(v: boolean): void {
     this.settings.acpMode = v;
+    this.saveSettings();
+  }
+
+  setAcpTerminal(v: boolean): void {
+    this.settings.acpTerminal = v;
     this.saveSettings();
   }
 

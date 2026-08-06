@@ -179,12 +179,22 @@ fn hello(client: &mut LineClient) {
 }
 
 fn spawn_fake_agent(client: &mut LineClient, pane_id: &str, cwd: &Path) {
+    spawn_fake_agent_with(client, pane_id, cwd, Vec::new(), false);
+}
+
+fn spawn_fake_agent_with(
+    client: &mut LineClient,
+    pane_id: &str,
+    cwd: &Path,
+    args: Vec<String>,
+    allow_terminal: bool,
+) {
     client.send(&ClientMessage::AcpSpawn {
         pane_id: pane_id.to_string(),
         cwd: cwd.to_string_lossy().to_string(),
         program: env!("CARGO_BIN_EXE_perene-fake-acp-agent").to_string(),
-        args: Vec::new(),
-        allow_terminal: false,
+        args,
+        allow_terminal,
     });
     client.send(&ClientMessage::Attach {
         pane_id: pane_id.to_string(),
@@ -193,6 +203,35 @@ fn spawn_fake_agent(client: &mut LineClient, pane_id: &str, cwd: &Path) {
 
 fn text_of(update: &serde_json::Value) -> String {
     update["content"]["text"].as_str().unwrap_or("").to_string()
+}
+
+/// Manda um prompt e devolve o que o agente respondeu em texto.
+fn ask(client: &mut LineClient, pane_id: &str, prompt: &str) -> String {
+    client.send(&ClientMessage::AcpPrompt {
+        pane_id: pane_id.to_string(),
+        text: prompt.to_string(),
+    });
+    client
+        .collect_acp(Duration::from_secs(15), |evs| {
+            evs.iter().any(|e| matches!(e, AcpEvent::TurnEnded { .. }))
+        })
+        .iter()
+        .filter_map(|e| match e {
+            AcpEvent::Update { update } => Some(text_of(update)),
+            AcpEvent::Failed { message } => Some(format!("FALHOU: {message}")),
+            _ => None,
+        })
+        .collect()
+}
+
+fn ready(client: &mut LineClient) {
+    let evs = client.collect_acp(Duration::from_secs(10), |evs| {
+        evs.iter().any(|e| matches!(e, AcpEvent::Ready))
+    });
+    assert!(
+        evs.iter().any(|e| matches!(e, AcpEvent::Ready)),
+        "a sessão devia ficar pronta: {evs:?}"
+    );
 }
 
 #[test]
@@ -319,6 +358,71 @@ fn full_turn_streams_asks_permission_and_survives_the_window_closing() {
             AcpEvent::Update { update } if text_of(update).contains("de novo")
         )),
         "depois do reattach ainda dá para conversar: {again:?}"
+    );
+}
+
+#[test]
+fn the_agent_reads_files_through_us_and_only_inside_the_session() {
+    // O caminho inverso: quem lê o disco é o Perene, a pedido do agente. E é
+    // aqui que o escopo vale — no terminal a CLI leria o que quisesse.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("projeto");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("dentro.txt"), "CONTEUDO_PERMITIDO").unwrap();
+    std::fs::write(dir.path().join("fora.txt"), "CONTEUDO_PROIBIDO").unwrap();
+
+    let endpoint = start_daemon(dir.path());
+    let pane_id = "pane_fs";
+    let mut c = LineClient::connect(&endpoint).unwrap();
+    hello(&mut c);
+    spawn_fake_agent(&mut c, pane_id, &root);
+    ready(&mut c);
+
+    let dentro = ask(&mut c, pane_id, "#fs dentro.txt");
+    assert!(
+        dentro.contains("CONTEUDO_PERMITIDO"),
+        "ler dentro do escopo tem que funcionar: {dentro}"
+    );
+
+    let fora = ask(&mut c, pane_id, "#fs ../fora.txt");
+    assert!(
+        !fora.contains("CONTEUDO_PROIBIDO"),
+        "vazou conteúdo de fora do diretório da sessão: {fora}"
+    );
+    assert!(
+        fora.contains("fora do diretório"),
+        "o agente devia receber um erro claro: {fora}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn the_agent_runs_commands_through_us_only_when_allowed() {
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = start_daemon(dir.path());
+    let mut c = LineClient::connect(&endpoint).unwrap();
+    hello(&mut c);
+
+    // Sem a capacidade declarada, rodar comando é recusado.
+    spawn_fake_agent_with(&mut c, "pane_sem", dir.path(), Vec::new(), false);
+    ready(&mut c);
+    let negado = ask(&mut c, "pane_sem", "#sh echo MARCA_PROIBIDA");
+    assert!(
+        !negado.contains("MARCA_PROIBIDA"),
+        "comando rodou sem permissão: {negado}"
+    );
+    assert!(
+        negado.contains("não permite"),
+        "o agente devia saber por que foi recusado: {negado}"
+    );
+
+    // Com a capacidade, o comando roda e a saída volta pelo streaming.
+    spawn_fake_agent_with(&mut c, "pane_com", dir.path(), Vec::new(), true);
+    ready(&mut c);
+    let saida = ask(&mut c, "pane_com", "#sh echo MARCA_PERMITIDA");
+    assert!(
+        saida.contains("MARCA_PERMITIDA"),
+        "a saída do comando devia chegar ao agente: {saida}"
     );
 }
 
