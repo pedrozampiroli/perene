@@ -249,8 +249,20 @@
     color: #9aa0a6;
     font-size: 11.5px;
   }
+  /* Falha de adapter vem com o stderr junto: várias linhas, e é justamente
+     isso que diz o motivo. Preserva as quebras, mas sem tomar a tela. */
   .notice.err {
     color: #e08b8b;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    max-height: 220px;
+    overflow-y: auto;
+    background: #2a1e1e;
+    border: 1px solid #3f2e2e;
+    border-radius: 5px;
+    padding: 6px 8px;
   }
   .perm {
     border: 1px solid #4a3f22;

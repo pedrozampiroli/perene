@@ -1,9 +1,12 @@
 //! Cliente de alto nível: sobe o agente e expõe as operações do ACP.
 
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
+
+use parking_lot::Mutex;
 
 use serde_json::{json, Value};
 
@@ -101,10 +104,20 @@ impl PeerHandler for Bridge {
     }
 }
 
+/// Quantas linhas de stderr do adapter guardamos para explicar uma falha.
+const STDERR_TAIL: usize = 20;
+
 /// Um agente ACP vivo.
 pub struct Agent {
     conn: Arc<Connection>,
     child: Option<Child>,
+    /// Últimas linhas de stderr do adapter.
+    ///
+    /// Quando o handshake falha, o JSON-RPC não tem o que dizer — o processo
+    /// nem chegou a falar. Quem explica é o stderr ("command not found",
+    /// "Invalid permissions.defaultMode"), então ele precisa sobreviver até a
+    /// hora de montar a mensagem de erro.
+    stderr: Arc<Mutex<VecDeque<String>>>,
 }
 
 impl Agent {
@@ -137,12 +150,22 @@ impl Agent {
         let mut child = cmd.spawn()?;
         let stdout = child.stdout.take().expect("stdout pedido acima");
         let stdin = child.stdin.take().expect("stdin pedido acima");
+        let tail = Arc::new(Mutex::new(VecDeque::new()));
         if let Some(stderr) = child.stderr.take() {
             let program = cfg.program.clone();
+            let tail = Arc::clone(&tail);
             std::thread::spawn(move || {
                 use std::io::BufRead;
-                for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
+                for line in std::io::BufReader::new(stderr)
+                    .lines()
+                    .map_while(Result::ok)
+                {
                     eprintln!("[acp:{program}] {line}");
+                    let mut tail = tail.lock();
+                    tail.push_back(line);
+                    if tail.len() > STDERR_TAIL {
+                        tail.pop_front();
+                    }
                 }
             });
         }
@@ -150,7 +173,18 @@ impl Agent {
         Ok(Self {
             conn,
             child: Some(child),
+            stderr: tail,
         })
+    }
+
+    /// Últimas linhas que o adapter escreveu em stderr (vazio se ficou quieto).
+    pub fn stderr_tail(&self) -> String {
+        self.stderr
+            .lock()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Conecta em streams já existentes (usado nos testes, sem processo).
@@ -162,6 +196,7 @@ impl Agent {
         Self {
             conn: Connection::start(reader, writer, Arc::new(Bridge { handler })),
             child: None,
+            stderr: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 

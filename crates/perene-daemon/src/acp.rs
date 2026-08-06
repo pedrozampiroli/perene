@@ -138,6 +138,13 @@ impl AgentHandler for AcpSession {
                 if self.closing.load(Ordering::Relaxed) {
                     return;
                 }
+                // Morreu antes de a sessão abrir (adapter ausente, config
+                // incompatível): quem reporta é o handshake, que sabe o motivo e
+                // ainda anexa o stderr. Aqui só produziríamos ruído genérico —
+                // e, pior, chegaria ANTES, escondendo a mensagem boa.
+                if self.session_id.lock().is_none() {
+                    return;
+                }
                 // Não mexe no estado aqui: quem estava no meio de um prompt já
                 // vai receber o erro do turno, com mensagem melhor.
                 self.emit(AcpEvent::Failed {
@@ -178,6 +185,56 @@ impl AgentHandler for AcpSession {
     fn on_client_method(&self, method: &str, params: Value) -> Result<Value, RpcError> {
         self.tools.handle(method, params)
     }
+}
+
+/// Junta o que o adapter escreveu em stderr à mensagem de erro.
+///
+/// Sem isto, "adapter não instalado" e "configuração incompatível" viram a mesma
+/// frase inútil na tela. O motivo real quase sempre está no stderr.
+fn with_stderr(message: String, agent: &Agent) -> String {
+    let tail = agent.stderr_tail();
+    if tail.trim().is_empty() {
+        message
+    } else {
+        format!("{message}\n{tail}")
+    }
+}
+
+/// Envolve o adapter num **login shell** quando o programa não é um caminho.
+///
+/// Lição #6, agora valendo para o ACP: o app aberto pelo Finder (ou pelo menu
+/// Iniciar) herda um PATH mínimo — `/usr/bin:/bin:/usr/sbin:/sbin`. O `npx` do
+/// nvm/homebrew simplesmente não existe ali, e o adapter falharia com "programa
+/// não encontrado" só porque o app não foi aberto de um terminal. Os PTYs já
+/// nascem de um login shell pelo mesmo motivo.
+///
+/// `exec` no fim: o processo que sobra é o do adapter, então o grupo que
+/// matamos ao fechar o pane é o certo.
+#[cfg(unix)]
+fn login_shell_command(program: &str, args: &[String]) -> (String, Vec<String>) {
+    if program.contains('/') {
+        return (program.to_string(), args.to_vec());
+    }
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let line = std::iter::once(program)
+        .chain(args.iter().map(String::as_str))
+        .map(shell_quote)
+        .collect::<Vec<_>>()
+        .join(" ");
+    (shell, vec!["-lc".into(), format!("exec {line}")])
+}
+
+/// No Windows o PATH do usuário vem do registro e já é herdado — não há o
+/// buraco do login shell.
+#[cfg(windows)]
+fn login_shell_command(program: &str, args: &[String]) -> (String, Vec<String>) {
+    (program.to_string(), args.to_vec())
+}
+
+/// Aspas simples, com o escape clássico para a própria aspa.
+#[cfg(unix)]
+fn shell_quote(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', r"'\''"))
 }
 
 /// Todas as sessões ACP do daemon.
@@ -225,9 +282,10 @@ impl AcpManager {
             session
         };
 
+        let (program, args) = login_shell_command(program, args);
         let cfg = SpawnConfig {
-            program: program.to_string(),
-            args: args.to_vec(),
+            program,
+            args,
             cwd: Some(cwd.to_string()),
         };
         let cwd = cwd.to_string();
@@ -255,7 +313,7 @@ impl AcpManager {
             };
             if let Err(e) = agent.initialize(caps) {
                 session.emit(AcpEvent::Failed {
-                    message: format!("handshake falhou: {e}"),
+                    message: with_stderr(format!("handshake falhou: {e}"), &agent),
                 });
                 session.set_state(PaneState::Error);
                 return;
@@ -267,7 +325,7 @@ impl AcpManager {
                 }
                 Err(e) => {
                     session.emit(AcpEvent::Failed {
-                        message: format!("não consegui abrir a sessão: {e}"),
+                        message: with_stderr(format!("não consegui abrir a sessão: {e}"), &agent),
                     });
                     session.set_state(PaneState::Error);
                 }
@@ -447,6 +505,39 @@ mod tests {
             message.contains("perene-programa-que-nao-existe"),
             "a mensagem deve dizer QUAL programa faltou: {message}"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn adapter_goes_through_a_login_shell_unless_it_is_a_path() {
+        let (program, args) = login_shell_command(
+            "npx",
+            &[
+                "-y".to_string(),
+                "@zed-industries/claude-agent-acp".to_string(),
+            ],
+        );
+        assert!(
+            program.contains("sh") || program.contains("zsh") || program.contains("bash"),
+            "devia rodar por um shell: {program}"
+        );
+        assert_eq!(args[0], "-lc");
+        assert_eq!(
+            args[1], "exec 'npx' '-y' '@zed-industries/claude-agent-acp'",
+            "os argumentos precisam ir com aspas — nome de pacote tem @ e /"
+        );
+
+        // Caminho explícito não precisa de shell nenhum.
+        let (program, args) = login_shell_command("/usr/local/bin/agente", &[]);
+        assert_eq!(program, "/usr/local/bin/agente");
+        assert!(args.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn quoting_survives_an_argument_with_a_quote() {
+        let (_, args) = login_shell_command("npx", &["ab'cd".to_string()]);
+        assert_eq!(args[1], r"exec 'npx' 'ab'\''cd'");
     }
 
     #[test]
