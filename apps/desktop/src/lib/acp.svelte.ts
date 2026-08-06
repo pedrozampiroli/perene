@@ -9,7 +9,7 @@
 // campos que sabemos desenhar e ignoramos o resto: o protocolo evolui, e uma
 // variante nova não pode quebrar a tela.
 
-import type { AcpEvent, AcpPermissionOption } from "./types";
+import type { AcpCommand, AcpEvent, AcpImage, AcpPermissionOption } from "./types";
 
 export interface AcpBlock {
   id: number;
@@ -41,11 +41,21 @@ export interface AcpConversation {
   plan: { text: string; status: string }[];
   /** Pedido de permissão aguardando o usuário (um por vez). */
   permission: AcpPending | null;
+  /** Comandos de barra que a sessão aceita. Vem do agente, não é lista nossa. */
+  commands: AcpCommand[];
   nextId: number;
 }
 
 export function emptyConversation(): AcpConversation {
-  return { ready: false, busy: false, blocks: [], plan: [], permission: null, nextId: 1 };
+  return {
+    ready: false,
+    busy: false,
+    blocks: [],
+    plan: [],
+    permission: null,
+    commands: [],
+    nextId: 1,
+  };
 }
 
 /** Texto de um bloco de conteúdo do ACP (`{type:"text"}`, string solta, lista). */
@@ -134,6 +144,18 @@ export function applyAcpEvent(conv: AcpConversation, event: AcpEvent): void {
           }
           return;
         }
+        case "available_commands_update":
+          conv.commands = (Array.isArray(u.availableCommands) ? u.availableCommands : []).map(
+            (c) => {
+              const cmd = (c ?? {}) as Record<string, unknown>;
+              return {
+                name: str(cmd.name),
+                description: str(cmd.description),
+                input: (cmd.input ?? null) as AcpCommand["input"],
+              };
+            },
+          );
+          return;
         case "plan":
           conv.plan = (Array.isArray(u.entries) ? u.entries : []).map((e) => {
             const entry = (e ?? {}) as Record<string, unknown>;
@@ -189,10 +211,20 @@ class AcpStore {
   }
 
   /** Eco local do que o usuário mandou (o agente não devolve o próprio prompt). */
-  pushUserPrompt(paneId: string, text: string): void {
+  pushUserPrompt(paneId: string, text: string, images: AcpImage[] = []): void {
     const conv = this.conversations[paneId];
     if (!conv) return;
-    conv.blocks.push({ id: conv.nextId++, kind: "message", role: "user", text });
+    // As imagens entram como markdown para o mesmo renderizador desenhar; é o
+    // eco do que foi enviado, então tem que aparecer igual ao que o agente viu.
+    const anexos = images
+      .map((img) => `\n\n![](data:${img.mimeType};base64,${img.dataB64})`)
+      .join("");
+    conv.blocks.push({
+      id: conv.nextId++,
+      kind: "message",
+      role: "user",
+      text: text + anexos,
+    });
     conv.busy = true;
     conv.plan = [];
   }

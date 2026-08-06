@@ -71,10 +71,21 @@ fn main() {
                 json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"sess_fake"}}),
             ),
             "session/prompt" => {
-                let prompt = msg["params"]["prompt"][0]["text"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
+                // Descreve os blocos recebidos: é assim que o teste confere que
+                // a imagem colada chegou até aqui, e não só o texto.
+                let blocks = msg["params"]["prompt"].as_array().cloned().unwrap_or_default();
+                let mut prompt = String::new();
+                for b in &blocks {
+                    match b["type"].as_str().unwrap_or("") {
+                        "text" => prompt.push_str(b["text"].as_str().unwrap_or("")),
+                        "image" => prompt.push_str(&format!(
+                            "[imagem {} {}b]",
+                            b["mimeType"].as_str().unwrap_or("?"),
+                            b["data"].as_str().map(str::len).unwrap_or(0)
+                        )),
+                        other => prompt.push_str(&format!("[{other}]")),
+                    }
+                }
 
                 // `#fs <caminho>` e `#sh <comando>`: exercitam o caminho INVERSO
                 // (o agente pedindo que o cliente execute), que é o ponto do ACP.

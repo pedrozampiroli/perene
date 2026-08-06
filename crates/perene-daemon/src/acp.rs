@@ -20,10 +20,12 @@ use parking_lot::Mutex;
 use serde_json::{json, Value};
 
 use perene_acp::{
-    Agent, AgentEvent, AgentHandler, ClientCapabilities, FsCapabilities, PermissionOutcome,
-    RequestPermissionParams, RpcError, SpawnConfig,
+    Agent, AgentEvent, AgentHandler, ClientCapabilities, ContentBlock, FsCapabilities,
+    PermissionOutcome, RequestPermissionParams, RpcError, SpawnConfig,
 };
-use perene_protocol::{AcpEvent, AcpMessage, DaemonMessage, PaneId, PaneState, PaneStatus};
+use perene_protocol::{
+    AcpEvent, AcpImage, AcpMessage, DaemonMessage, PaneId, PaneState, PaneStatus,
+};
 
 use crate::acp_client::ClientTools;
 use crate::status::DONE_TTL;
@@ -334,7 +336,7 @@ impl AcpManager {
     }
 
     /// Manda um prompt. Não bloqueia o loop do cliente: o turno pode durar minutos.
-    pub fn prompt(&self, pane_id: &str, text: &str) {
+    pub fn prompt(&self, pane_id: &str, text: &str, images: &[AcpImage]) {
         let Some(session) = self.get(pane_id) else {
             return;
         };
@@ -347,10 +349,23 @@ impl AcpManager {
         let Some(agent) = session.agent.lock().clone() else {
             return;
         };
-        let text = text.to_string();
+        // Imagens antes do texto: é a ordem que dá contexto ao pedido ("o que
+        // tem nesta imagem?" depois da imagem).
+        let mut blocks: Vec<ContentBlock> = images
+            .iter()
+            .map(|img| ContentBlock::Image {
+                data: img.data_b64.clone(),
+                mime_type: img.mime_type.clone(),
+            })
+            .collect();
+        if !text.is_empty() {
+            blocks.push(ContentBlock::Text {
+                text: text.to_string(),
+            });
+        }
         thread::spawn(move || {
             session.set_state(PaneState::Running);
-            match agent.prompt(&session_id, &text) {
+            match agent.prompt_blocks(&session_id, blocks) {
                 Ok(stop) => {
                     session.emit(AcpEvent::TurnEnded {
                         stop_reason: format!("{stop:?}"),

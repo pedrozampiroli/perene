@@ -235,14 +235,26 @@ impl Agent {
         Ok(r.session_id)
     }
 
-    /// Manda um prompt e espera o turno terminar. As respostas parciais chegam
-    /// antes, pelo `AgentHandler::on_event`.
+    /// Manda um prompt só de texto. Atalho para [`Agent::prompt_blocks`].
     pub fn prompt(&self, session_id: &str, text: &str) -> Result<StopReason, RpcError> {
-        let params = PromptParams {
-            session_id: session_id.to_string(),
-            prompt: vec![ContentBlock::Text {
+        self.prompt_blocks(
+            session_id,
+            vec![ContentBlock::Text {
                 text: text.to_string(),
             }],
+        )
+    }
+
+    /// Manda um prompt com blocos (texto + imagens) e espera o turno terminar.
+    /// As respostas parciais chegam antes, pelo `AgentHandler::on_event`.
+    pub fn prompt_blocks(
+        &self,
+        session_id: &str,
+        blocks: Vec<ContentBlock>,
+    ) -> Result<StopReason, RpcError> {
+        let params = PromptParams {
+            session_id: session_id.to_string(),
+            prompt: blocks,
         };
         let v = self.conn.request(
             "session/prompt",

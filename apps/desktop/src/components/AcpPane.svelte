@@ -12,19 +12,53 @@
   import { api } from "../lib/api";
   import { app } from "../lib/store.svelte";
   import { t } from "../lib/i18n.svelte";
+  import { renderMarkdown } from "../lib/markdown";
   import { acpConfig } from "../lib/profiles";
+  import type { AcpImage } from "../lib/types";
 
   let { paneId }: { paneId: string } = $props();
 
   let scroller: HTMLDivElement;
+  let box: HTMLTextAreaElement;
   let input = $state("");
   let sending = $state(false);
+  /** Imagens coladas, aguardando envio junto do texto. */
+  let anexos = $state<AcpImage[]>([]);
+  /** Índice selecionado no menu de comandos (−1 = menu fechado). */
+  let cmdIndex = $state(-1);
   /** Só rola sozinho se o usuário já estava no fim (não sequestra a leitura). */
   let pinned = true;
 
   const conv = $derived(acp.get(paneId));
   const pane = $derived(app.findPane(paneId));
-  const canSend = $derived(conv.ready && !conv.busy && input.trim().length > 0);
+  const canSend = $derived(
+    conv.ready && !conv.busy && (input.trim().length > 0 || anexos.length > 0),
+  );
+
+  // ── Comandos de barra ──────────────────────────────────────────────────────
+  // O menu só aparece enquanto a primeira palavra está sendo digitada: depois do
+  // espaço o usuário já escolheu e está passando argumento.
+  const cmdQuery = $derived.by(() => {
+    const m = /^\/(\S*)$/.exec(input);
+    return m ? m[1].toLowerCase() : null;
+  });
+  const cmdMatches = $derived.by(() => {
+    if (cmdQuery === null) return [];
+    return conv.commands
+      .filter((c) => c.name.toLowerCase().startsWith(cmdQuery))
+      .slice(0, 8);
+  });
+
+  $effect(() => {
+    // Reabriu o menu → começa na primeira opção; sumiu → fecha.
+    cmdIndex = cmdMatches.length > 0 ? Math.min(Math.max(cmdIndex, 0), cmdMatches.length - 1) : -1;
+  });
+
+  function pickCommand(name: string) {
+    input = `/${name} `;
+    cmdIndex = -1;
+    box?.focus();
+  }
 
   onMount(() => {
     const p = app.findPane(paneId);
@@ -54,24 +88,77 @@
 
   async function send() {
     const text = input.trim();
-    if (!text || !conv.ready || conv.busy) return;
+    if ((!text && anexos.length === 0) || !conv.ready || conv.busy) return;
+    const images = anexos;
     sending = true;
-    acp.pushUserPrompt(paneId, text);
+    acp.pushUserPrompt(paneId, text, images);
     input = "";
+    anexos = [];
+    cmdIndex = -1;
     pinned = true;
     try {
-      await api.acpPrompt(paneId, text);
+      await api.acpPrompt(paneId, text, images);
     } finally {
       sending = false;
     }
   }
 
   function onKey(e: KeyboardEvent) {
+    // Com o menu de comandos aberto, as setas navegam nele e o Enter escolhe.
+    if (cmdIndex >= 0 && cmdMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        cmdIndex = (cmdIndex + 1) % cmdMatches.length;
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        cmdIndex = (cmdIndex - 1 + cmdMatches.length) % cmdMatches.length;
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        pickCommand(cmdMatches[cmdIndex].name);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cmdIndex = -1;
+        return;
+      }
+    }
     // Enter envia, Shift+Enter quebra linha — convenção de chat.
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void send();
     }
+  }
+
+  /** Colar imagem: vira anexo do próximo prompt. */
+  async function onPaste(e: ClipboardEvent) {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imagens = items.filter((i) => i.type.startsWith("image/"));
+    if (imagens.length === 0) return; // texto normal segue o caminho padrão
+    e.preventDefault();
+    for (const item of imagens) {
+      const blob = item.getAsFile();
+      if (!blob) continue;
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      anexos = [...anexos, { dataB64: bytesToB64(bytes), mimeType: blob.type }];
+    }
+  }
+
+  function bytesToB64(bytes: Uint8Array): string {
+    let bin = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+  }
+
+  function removeAnexo(i: number) {
+    anexos = anexos.filter((_, n) => n !== i);
   }
 
   function answer(optionId: string | null) {
@@ -97,7 +184,8 @@
       {#if block.kind === "message"}
         <div class="msg" class:user={block.role === "user"}>
           <span class="who">{block.role === "user" ? t("acp.you") : t("acp.agent")}</span>
-          <div class="text">{block.text}</div>
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+          <div class="md">{@html renderMarkdown(block.text)}</div>
         </div>
       {:else if block.kind === "thought"}
         <div class="thought">{block.text}</div>
@@ -136,23 +224,56 @@
     {/if}
   </div>
 
-  <div class="composer">
-    <textarea
-      rows="1"
-      bind:value={input}
-      onkeydown={onKey}
-      placeholder={conv.ready ? t("acp.placeholder") : t("acp.starting")}
-      disabled={!conv.ready}
-    ></textarea>
-    {#if conv.busy}
-      <button class="go stop" title={t("acp.stop")} onclick={() => api.acpCancel(paneId)}>
-        <Square size={12} />
-      </button>
-    {:else}
-      <button class="go" title={t("acp.send")} disabled={!canSend || sending} onclick={send}>
-        <ArrowUp size={14} />
-      </button>
+  <div class="composer-wrap">
+    {#if cmdIndex >= 0 && cmdMatches.length > 0}
+      <div class="cmds">
+        {#each cmdMatches as cmd, i (cmd.name)}
+          <button
+            class="cmd"
+            class:sel={i === cmdIndex}
+            onmouseenter={() => (cmdIndex = i)}
+            onclick={() => pickCommand(cmd.name)}
+          >
+            <span class="cname">/{cmd.name}</span>
+            <span class="cdesc">{cmd.description}</span>
+          </button>
+        {/each}
+      </div>
     {/if}
+
+    {#if anexos.length > 0}
+      <div class="anexos">
+        {#each anexos as img, i (i)}
+          <div class="anexo">
+            <img src={`data:${img.mimeType};base64,${img.dataB64}`} alt="" />
+            <button class="rm" title={t("acp.removeImage")} onclick={() => removeAnexo(i)}>
+              <X size={10} />
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
+    <div class="composer">
+      <textarea
+        bind:this={box}
+        rows="1"
+        bind:value={input}
+        onkeydown={onKey}
+        onpaste={onPaste}
+        placeholder={conv.ready ? t("acp.placeholder") : t("acp.starting")}
+        disabled={!conv.ready}
+      ></textarea>
+      {#if conv.busy}
+        <button class="go stop" title={t("acp.stop")} onclick={() => api.acpCancel(paneId)}>
+          <Square size={12} />
+        </button>
+      {:else}
+        <button class="go" title={t("acp.send")} disabled={!canSend || sending} onclick={send}>
+          <ArrowUp size={14} />
+        </button>
+      {/if}
+    </div>
   </div>
   <div class="foot">{pane?.workingDirectory ?? ""}</div>
 </div>
@@ -190,15 +311,93 @@
     color: #6a6a6a;
     margin-bottom: 2px;
   }
-  .msg .text {
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-  .msg.user .text {
+  .msg.user .md {
     color: #cfd6dd;
     border-left: 2px solid #3a3d41;
     padding-left: 8px;
   }
+
+  /* ── Markdown ─────────────────────────────────────────────────────────── */
+  .md :global(p) {
+    margin: 0 0 8px;
+  }
+  .md :global(p:last-child) {
+    margin-bottom: 0;
+  }
+  .md :global(h1),
+  .md :global(h2),
+  .md :global(h3),
+  .md :global(h4) {
+    margin: 12px 0 6px;
+    font-size: 13px;
+    color: #e8e8e8;
+  }
+  .md :global(ul),
+  .md :global(ol) {
+    margin: 0 0 8px;
+    padding-left: 20px;
+  }
+  .md :global(li) {
+    margin: 2px 0;
+  }
+  .md :global(code) {
+    background: #2a2a2a;
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+  }
+  .md :global(pre) {
+    background: #171717;
+    border: 1px solid #2c2c2c;
+    border-radius: 5px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    margin: 0 0 8px;
+  }
+  .md :global(pre code) {
+    background: none;
+    padding: 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+  }
+  .md :global(blockquote) {
+    margin: 0 0 8px;
+    padding-left: 8px;
+    border-left: 2px solid #3a3d41;
+    color: #9aa0a6;
+  }
+  .md :global(a) {
+    color: #6ea8fe;
+  }
+  .md :global(table) {
+    border-collapse: collapse;
+    margin: 0 0 8px;
+    font-size: 11.5px;
+  }
+  .md :global(th),
+  .md :global(td) {
+    border: 1px solid #2c2c2c;
+    padding: 3px 7px;
+    text-align: left;
+  }
+  .md :global(th) {
+    background: #252526;
+  }
+  .md :global(img) {
+    max-width: 100%;
+    max-height: 320px;
+    border-radius: 5px;
+    border: 1px solid #2c2c2c;
+    display: block;
+    margin: 6px 0;
+  }
+  .md :global(hr) {
+    border: none;
+    border-top: 1px solid #2c2c2c;
+    margin: 10px 0;
+  }
+
   .thought {
     color: #7b7b7b;
     font-style: italic;
@@ -310,13 +509,103 @@
   .opt.primary:hover {
     background: #3a5a3c;
   }
+
+  /* ── Composer ─────────────────────────────────────────────────────────── */
+  .composer-wrap {
+    position: relative;
+    flex: 0 0 auto;
+    border-top: 1px solid #2a2a2a;
+  }
+  .cmds {
+    position: absolute;
+    bottom: 100%;
+    left: 12px;
+    right: 12px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: #252526;
+    border: 1px solid #3a3d41;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    margin-bottom: 6px;
+    z-index: 5;
+  }
+  .cmd {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: #cccccc;
+    padding: 5px 10px;
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .cmd.sel {
+    background: #094771;
+  }
+  .cname {
+    color: #6ea8fe;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    flex: 0 0 auto;
+  }
+  .cmd.sel .cname {
+    color: #cfe3ff;
+  }
+  .cdesc {
+    color: #8a8a8a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cmd.sel .cdesc {
+    color: #cfd6dd;
+  }
+  .anexos {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 12px 0;
+  }
+  .anexo {
+    position: relative;
+  }
+  .anexo img {
+    height: 48px;
+    width: auto;
+    max-width: 96px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #3a3d41;
+    display: block;
+  }
+  .rm {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 15px;
+    height: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #3a3d41;
+    border: 1px solid #1e1e1e;
+    border-radius: 50%;
+    color: #ddd;
+    cursor: pointer;
+    padding: 0;
+  }
+  .rm:hover {
+    background: #6b4a4a;
+  }
   .composer {
     display: flex;
     align-items: flex-end;
     gap: 6px;
     padding: 8px 12px;
-    border-top: 1px solid #2a2a2a;
-    flex: 0 0 auto;
   }
   textarea {
     flex: 1 1 auto;

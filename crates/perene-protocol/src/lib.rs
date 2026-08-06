@@ -119,6 +119,15 @@ pub enum AcpEvent {
     Failed { message: String },
 }
 
+/// Imagem colada pelo usuário, indo junto do prompt.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpImage {
+    /// Bytes em base64 puro (sem o prefixo `data:`).
+    pub data_b64: String,
+    pub mime_type: String,
+}
+
 /// Evento de sessão ACP endereçado a um pane.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -174,9 +183,14 @@ pub enum ClientMessage {
         #[serde(default)]
         allow_terminal: bool,
     },
-    /// Manda um prompt para a sessão.
+    /// Manda um prompt para a sessão (texto + imagens coladas).
     #[serde(rename_all = "camelCase")]
-    AcpPrompt { pane_id: PaneId, text: String },
+    AcpPrompt {
+        pane_id: PaneId,
+        text: String,
+        #[serde(default)]
+        images: Vec<AcpImage>,
+    },
     /// Interrompe o turno atual.
     #[serde(rename_all = "camelCase")]
     AcpCancel { pane_id: PaneId },

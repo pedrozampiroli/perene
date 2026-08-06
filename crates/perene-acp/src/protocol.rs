@@ -84,11 +84,22 @@ pub struct NewSessionResult {
     pub session_id: SessionId,
 }
 
-/// Bloco de conteúdo de um prompt (só texto por enquanto).
+/// Bloco de conteúdo de um prompt.
+///
+/// `snake_case` na tag porque a spec usa `text`/`image` minúsculos; os CAMPOS
+/// vão em camelCase (`mimeType`), como o resto do wire.
 #[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
-    Text { text: String },
+    Text {
+        text: String,
+    },
+    /// Imagem colada pelo usuário. `data` é base64 puro (sem `data:` na frente).
+    #[serde(rename_all = "camelCase")]
+    Image {
+        data: String,
+        mime_type: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -166,6 +177,15 @@ pub enum SessionUpdate {
     Plan {
         #[serde(default)]
         entries: Vec<Value>,
+    },
+    /// Comandos de barra que a sessão aceita (`/context`, `/init`, skills…).
+    ///
+    /// Chega logo depois de a sessão abrir e pode mudar durante a conversa. Sem
+    /// isto o usuário digita `/` no escuro.
+    #[serde(rename_all = "camelCase")]
+    AvailableCommandsUpdate {
+        #[serde(default)]
+        available_commands: Vec<Value>,
     },
     /// Consumo de contexto/custo.
     #[serde(rename_all = "camelCase")]

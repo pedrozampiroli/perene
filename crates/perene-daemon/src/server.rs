@@ -300,7 +300,11 @@ fn dispatch(
         } => mgr
             .acp()
             .spawn(&pane_id, &cwd, &program, &args, allow_terminal),
-        ClientMessage::AcpPrompt { pane_id, text } => mgr.acp().prompt(&pane_id, &text),
+        ClientMessage::AcpPrompt {
+            pane_id,
+            text,
+            images,
+        } => mgr.acp().prompt(&pane_id, &text, &images),
         ClientMessage::AcpCancel { pane_id } => mgr.acp().cancel(&pane_id),
         ClientMessage::AcpPermission {
             pane_id,

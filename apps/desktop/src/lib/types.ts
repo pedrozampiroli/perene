@@ -169,3 +169,17 @@ export interface AcpMessage {
   paneId: string;
   event: AcpEvent;
 }
+
+/** Comando de barra anunciado pela sessão (`/context`, `/init`, skills…). */
+export interface AcpCommand {
+  name: string;
+  description: string;
+  /** `{ hint }` quando o comando aceita argumento. */
+  input?: { hint?: string | null } | null;
+}
+
+/** Imagem colada, indo junto do prompt. */
+export interface AcpImage {
+  dataB64: string;
+  mimeType: string;
+}

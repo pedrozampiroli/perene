@@ -316,8 +316,13 @@ pub fn acp_prompt(
     state: State<'_, DaemonClient>,
     pane_id: String,
     text: String,
+    images: Vec<perene_protocol::AcpImage>,
 ) -> Result<(), String> {
-    state.send_connected(&ClientMessage::AcpPrompt { pane_id, text })
+    state.send_connected(&ClientMessage::AcpPrompt {
+        pane_id,
+        text,
+        images,
+    })
 }
 
 #[tauri::command]

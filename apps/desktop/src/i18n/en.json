@@ -109,6 +109,7 @@
   "acp.send": "Send",
   "acp.stop": "Stop",
   "acp.permissionTitle": "Permission requested",
+  "acp.removeImage": "Remove image",
   "settings.webgl": "WebGL renderer",
   "settings.webglHint": "Faster, but uses MUCH more RAM. Off by default.",
   "settings.fontSize": "Font size",

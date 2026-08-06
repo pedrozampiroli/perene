@@ -210,6 +210,7 @@ fn ask(client: &mut LineClient, pane_id: &str, prompt: &str) -> String {
     client.send(&ClientMessage::AcpPrompt {
         pane_id: pane_id.to_string(),
         text: prompt.to_string(),
+        images: Vec::new(),
     });
     client
         .collect_acp(Duration::from_secs(15), |evs| {
@@ -256,6 +257,7 @@ fn full_turn_streams_asks_permission_and_survives_the_window_closing() {
     c1.send(&ClientMessage::AcpPrompt {
         pane_id: pane_id.to_string(),
         text: "rode os testes".into(),
+        images: Vec::new(),
     });
 
     // Streaming + o pedido de permissão, que trava o agente.
@@ -343,6 +345,7 @@ fn full_turn_streams_asks_permission_and_survives_the_window_closing() {
     c2.send(&ClientMessage::AcpPrompt {
         pane_id: pane_id.to_string(),
         text: "de novo".into(),
+        images: Vec::new(),
     });
     let again = c2.collect_acp(Duration::from_secs(10), |evs| {
         evs.iter().any(|e| {
@@ -423,6 +426,49 @@ fn the_agent_runs_commands_through_us_only_when_allowed() {
     assert!(
         saida.contains("MARCA_PERMITIDA"),
         "a saída do comando devia chegar ao agente: {saida}"
+    );
+}
+
+#[test]
+fn pasted_images_travel_with_the_prompt() {
+    // Colar print no chat é metade do uso real. O agente precisa receber o bloco
+    // de imagem, não só o texto — e é o wire inteiro (UI → IPC → daemon →
+    // JSON-RPC) que isto exercita.
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = start_daemon(dir.path());
+    let pane_id = "pane_img";
+
+    let mut c = LineClient::connect(&endpoint).unwrap();
+    hello(&mut c);
+    spawn_fake_agent(&mut c, pane_id, dir.path());
+    ready(&mut c);
+
+    c.send(&ClientMessage::AcpPrompt {
+        pane_id: pane_id.to_string(),
+        text: "o que tem aqui?".into(),
+        images: vec![perene_protocol::AcpImage {
+            data_b64: "aGVsbG8=".into(),
+            mime_type: "image/png".into(),
+        }],
+    });
+    let resposta: String = c
+        .collect_acp(Duration::from_secs(15), |evs| {
+            evs.iter().any(|e| matches!(e, AcpEvent::TurnEnded { .. }))
+        })
+        .iter()
+        .filter_map(|e| match e {
+            AcpEvent::Update { update } => Some(text_of(update)),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        resposta.contains("[imagem image/png 8b]"),
+        "o agente devia ter recebido o bloco de imagem: {resposta}"
+    );
+    assert!(
+        resposta.contains("o que tem aqui?"),
+        "e o texto junto, na mesma mensagem: {resposta}"
     );
 }
 
@@ -508,6 +554,7 @@ fn denying_permission_refuses_the_turn() {
     c.send(&ClientMessage::AcpPrompt {
         pane_id: pane_id.to_string(),
         text: "apague tudo".into(),
+        images: Vec::new(),
     });
     let evs = c.collect_acp(Duration::from_secs(10), |evs| {
         evs.iter().any(|e| matches!(e, AcpEvent::Permission { .. }))
@@ -579,6 +626,7 @@ fn real_adapter_answers_a_prompt() {
     c.send(&ClientMessage::AcpPrompt {
         pane_id: pane_id.into(),
         text: "Responda apenas: PERENE_OK".into(),
+        images: Vec::new(),
     });
     let turn = c.collect_acp(Duration::from_secs(180), |evs| {
         evs.iter()
