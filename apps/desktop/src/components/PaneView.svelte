@@ -2,6 +2,7 @@
   import { t } from "../lib/i18n.svelte";
   import { onMount, onDestroy } from "svelte";
   import { X, Code2 } from "@lucide/svelte";
+  import { isPermissionGranted, sendNotification } from "@tauri-apps/plugin-notification";
   import { PerenePane } from "../lib/terminal";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
@@ -9,16 +10,39 @@
   import FilesPane from "./FilesPane.svelte";
   import ToolIcon from "./ToolIcon.svelte";
 
+  /** Bells em rajada (ex.: vários BEL no mesmo chunk) viram 1 notificação só. */
+  const BELL_DEBOUNCE_MS = 4000;
+
   let { paneId }: { paneId: string } = $props();
 
   let container: HTMLDivElement;
   let pane: PerenePane | undefined;
+  let lastBellAt = 0;
 
   const data = $derived(app.findPane(paneId));
   const isFiles = $derived(data?.kind === "files");
   const prof = $derived(profile(data?.toolProfileId ?? "shell"));
   const isActive = $derived(app.activePaneId === paneId);
   const dirLabel = $derived(baseName(data?.workingDirectory ?? "") || "~");
+
+  /** claude/codex/opencode tocam o bell quando terminam ou esperam input (bell
+   *  ligado por `cli_notify.rs`). Ignora se a janela já está com foco NESTE
+   *  pane — o usuário já está olhando, notificar seria só ruído. */
+  async function handleBell(): Promise<void> {
+    const now = Date.now();
+    if (now - lastBellAt < BELL_DEBOUNCE_MS) return;
+    lastBellAt = now;
+    if (document.hasFocus() && isActive) return;
+    try {
+      if (!(await isPermissionGranted())) return;
+      sendNotification({
+        title: app.findTabForPane(paneId)?.title || prof.label,
+        body: t("notification.idleBody"),
+      });
+    } catch {
+      // notificação é um extra — nunca pode derrubar o terminal.
+    }
+  }
 
   onMount(() => {
     const p = app.findPane(paneId);
@@ -31,6 +55,7 @@
         fontSize: app.settings.fontSize,
         webgl: app.settings.webgl,
         shell: app.settings.shell || null,
+        onBell: () => void handleBell(),
       })
       .catch(() => {}); // erros de spawn não devem virar unhandledrejection
   });

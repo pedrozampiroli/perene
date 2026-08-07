@@ -9,6 +9,7 @@
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-image",
     "clipboard-manager:allow-write-image",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "notification:default"
   ]
 }

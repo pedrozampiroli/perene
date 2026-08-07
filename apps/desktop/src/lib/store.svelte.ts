@@ -230,6 +230,15 @@ class AppStore {
     return undefined;
   }
 
+  /** Aba dona de um pane — usado pra rotular notificações (nome da sessão). */
+  findTabForPane(paneId: string): Tab | undefined {
+    for (const w of this.manifest.workspaces)
+      for (const t of w.tabs) {
+        if (t.panes.some((p) => p.id === paneId)) return t;
+      }
+    return undefined;
+  }
+
   tabsInFolder(ws: Workspace, folderId: string | null): Tab[] {
     return ws.tabs.filter((t) => (t.folderId ?? null) === folderId);
   }

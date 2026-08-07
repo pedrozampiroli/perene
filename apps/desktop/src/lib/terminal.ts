@@ -22,7 +22,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api } from "./api";
 import { t } from "./i18n.svelte";
-import { PTY_OUTPUT, PTY_EXIT } from "./events";
+import { PTY_OUTPUT, PTY_EXIT, PTY_ATTACH_DONE } from "./events";
 
 const isMac = navigator.userAgent.toLowerCase().includes("mac");
 
@@ -86,6 +86,10 @@ export interface PaneOptions {
   fontSize?: number;
   webgl?: boolean;
   shell?: string | null;
+  /** BEL (`\x07`) recebido do PTY — claude/codex/opencode tocam isso quando
+   *  terminam ou esperam input (ver `cli_notify.rs`, que liga o bell nas 3
+   *  CLIs). Dispara a notificação de idle. */
+  onBell?: () => void;
 }
 
 export class PerenePane {
@@ -98,6 +102,9 @@ export class PerenePane {
   private disposed = false;
   /** Já reportamos falha neste pane? Evita repetir o aviso a cada tecla. */
   private broken = false;
+  /** Ainda no replay do scrollback (attach)? Um bell aí é histórico, não um
+   *  evento novo — vira notificação só depois do `PTY_ATTACH_DONE`. */
+  private replaying = true;
 
   constructor(paneId: string, fontSize = 13) {
     this.paneId = paneId;
@@ -135,6 +142,11 @@ export class PerenePane {
     container.addEventListener("paste", this.onPaste, true);
 
     this.term.onData((data) => this.send(data));
+    if (opts.onBell) {
+      this.term.onBell(() => {
+        if (!this.replaying) opts.onBell!();
+      });
+    }
 
     this.unlisteners.push(
       await listen<{ paneId: string; dataB64: string }>(PTY_OUTPUT, (e) => {
@@ -146,6 +158,12 @@ export class PerenePane {
       await listen<{ paneId: string; code: number | null }>(PTY_EXIT, (e) => {
         if (e.payload.paneId !== this.paneId) return;
         this.term.writeln(`\r\n\x1b[90m${t("terminal.processEnded")}\x1b[0m`);
+      }),
+    );
+    this.unlisteners.push(
+      await listen<{ paneId: string }>(PTY_ATTACH_DONE, (e) => {
+        if (e.payload.paneId !== this.paneId) return;
+        this.replaying = false;
       }),
     );
 

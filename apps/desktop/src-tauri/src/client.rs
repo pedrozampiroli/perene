@@ -108,6 +108,14 @@ fn connect_and_start(app: &AppHandle) -> Result<Box<dyn Write + Send>, String> {
     Ok(Box::new(writer))
 }
 
+/// Espelha `DaemonMessage::AttachDone` num formato serializável — a variante do
+/// enum não implementa `Serialize` sozinha fora do `DaemonMessage` (tag `type`).
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AttachDonePayload {
+    pane_id: String,
+}
+
 fn read_loop<R: Read>(stream: R, app: AppHandle) {
     use std::io::{BufRead, BufReader};
 
@@ -136,6 +144,9 @@ fn read_loop<R: Read>(stream: R, app: AppHandle) {
             }
             DaemonMessage::Exit(e) => {
                 let _ = app.emit(events::PTY_EXIT, e);
+            }
+            DaemonMessage::AttachDone { pane_id } => {
+                let _ = app.emit(events::PTY_ATTACH_DONE, AttachDonePayload { pane_id });
             }
             _ => {}
         }
