@@ -72,26 +72,66 @@ Download the installer from [Releases](../../releases), or build it yourself:
 
 ```bash
 git clone https://github.com/pedrozampiroli/perene.git
-cd perene/apps/desktop
-npm install
-npm run tauri build     # → .dmg (macOS) · .msi/NSIS (Windows) · .deb/AppImage (Linux)
+cd perene
+make setup && make bundle   # → .dmg (macOS) · .msi/NSIS (Windows) · .deb/.rpm (Linux)
 ```
 
-**Requirements:** [Rust](https://rustup.rs), Node 22+, and on Linux the WebKitGTK
-dev packages (`libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`,
-`patchelf`).
+`make help` lists every target. If you'd rather not use make, the underlying
+commands are `cd apps/desktop && npm install && npm run tauri build`.
+
+**Requirements:** [Rust](https://rustup.rs) and Node 22+, plus the WebKitGTK
+stack on Linux:
+
+```bash
+# Debian / Ubuntu
+sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+  patchelf libssl-dev build-essential
+
+# Arch / Manjaro
+sudo pacman -S webkit2gtk-4.1 gtk3 libappindicator-gtk3 librsvg patchelf
+```
+
+### Linux notes
+
+**AppImage only builds on Debian-family distros.** `linuxdeploy-plugin-gtk`
+unconditionally copies `/usr/lib/gdk-pixbuf-2.0/2.10.0`, and current Arch and
+derivatives no longer ship that directory — `gdk-pixbuf2` builds its loaders in.
+That's why `make bundle` defaults to `deb,rpm` on Linux; CI builds the AppImage
+on `ubuntu-latest` and uploads it with the release. On a Debian-family machine
+you can ask for everything with `make bundle BUNDLES=all`.
+
+If you do bundle an AppImage on a recent distro, `NO_STRIP=true` is required —
+the `strip` shipped inside linuxdeploy predates the `.relr.dyn` section and
+fails on modern glibc libraries. The Makefile exports it for you.
+
+**On distros without `.deb`/`.rpm`**, install user-locally — no sudo, nothing
+fighting your package manager:
+
+```bash
+make release && make install    # → ~/.local/bin + .desktop entry + icons
+make uninstall                  # removes them (keeps ~/.perene2)
+```
+
+**Reinstalling while the app runs?** Kill only the UI. A blanket
+`pkill perene` takes the daemon down with it and destroys every live session:
+
+```bash
+make kill-ui    # kills the UI, leaves the daemon (and your sessions) alone
+```
+
+Wayland and X11 both work — the app runs on WebKitGTK either way.
 
 ## Development
 
 ```bash
-cd apps/desktop
-npm install
-npm run tauri dev       # run the app with hot reload
-npm run check           # typecheck the frontend
-
-cargo test --workspace  # Rust tests
-cargo build --workspace
+make dev      # run the app with hot reload
+make check    # typecheck the frontend (svelte-check)
+make test     # Rust tests
+make build    # cargo build --workspace
 ```
+
+Or without make: `npm run tauri dev` / `npm run check` from `apps/desktop`, and
+`cargo test --workspace` / `cargo build --workspace` from the root.
 
 App state lives in `~/.perene2/` (`%APPDATA%\perene2\` on Windows): manifest,
 settings, scrollback and pasted images — all written atomically with a `.bak`.
@@ -156,9 +196,15 @@ back to English.
 
 ## Status
 
-macOS is the fully exercised platform. Windows and Linux **build and pass tests
-in CI**, but the daemon's IPC transport is still Unix-socket only — Windows named
-pipes are the main piece missing for full runtime support there.
+macOS is the fully exercised platform, used daily.
+
+**Linux runs.** Verified on Manjaro under Wayland: the workspace builds, the app
+launches, and the daemon correctly outlives the UI. Packaging is the only rough
+edge, and only for AppImage on non-Debian distros — see [Linux notes](#linux-notes).
+
+**Windows builds and passes tests in CI**, and the named-pipe IPC transport is
+implemented (`crates/perene-daemon/src/winpipe.rs`), but nobody has exercised it
+on a real Windows machine yet.
 
 ## License
 
