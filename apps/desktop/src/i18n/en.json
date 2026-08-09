@@ -183,6 +183,7 @@
   "terminal.processEnded": "[process ended]",
   "terminal.spawnFailed": "Could not start this terminal.",
   "terminal.writeFailed": "This terminal is no longer connected to the Perene daemon.",
+  "notification.idleBody": "Idle — waiting for your input.",
   "onb.skip": "Skip",
   "onb.back": "Back",
   "onb.next": "Next",
