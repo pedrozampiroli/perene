@@ -32,6 +32,9 @@ pub struct Settings {
     /// Idioma da interface (ex.: `en`, `pt-BR`). Vazio = seguir o sistema.
     #[serde(default)]
     pub locale: String,
+    /// `false` até o usuário concluir (ou pular) o onboarding de boas-vindas.
+    #[serde(default)]
+    pub onboarding_done: bool,
 }
 
 fn default_true() -> bool {
@@ -55,6 +58,7 @@ impl Default for Settings {
             sidebar_width: default_sidebar_width(),
             editor_panel_width: default_editor_panel_width(),
             locale: String::new(),
+            onboarding_done: false,
         }
     }
 }
@@ -107,6 +111,7 @@ mod tests {
             sidebar_width: 300,
             editor_panel_width: 280,
             locale: "pt-BR".into(),
+            onboarding_done: true,
         };
         store.save(&s).unwrap();
         assert_eq!(store.load().unwrap(), s);

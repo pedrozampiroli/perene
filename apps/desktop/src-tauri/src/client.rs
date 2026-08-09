@@ -148,6 +148,9 @@ fn read_loop<R: Read>(stream: R, app: AppHandle) {
             DaemonMessage::AttachDone { pane_id } => {
                 let _ = app.emit(events::PTY_ATTACH_DONE, AttachDonePayload { pane_id });
             }
+            DaemonMessage::Status(st) => {
+                let _ = app.emit(events::PTY_STATUS, st);
+            }
             _ => {}
         }
     }

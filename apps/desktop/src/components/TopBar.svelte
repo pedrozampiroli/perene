@@ -20,7 +20,7 @@
     {/if}
   </div>
   <div class="spacer"></div>
-  <GitWidget />
+  <div data-tour="git"><GitWidget /></div>
 </div>
 
 <style>

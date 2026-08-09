@@ -5,6 +5,7 @@
   import { profile } from "../lib/profiles";
   import { shortPath as shortenPath } from "../lib/paths";
   import ToolIcon from "./ToolIcon.svelte";
+  import StatusDot from "./StatusDot.svelte";
   import type { Tab } from "../lib/types";
 
   const ws = $derived(app.activeWorkspace);
@@ -56,7 +57,7 @@
     <span>{t("sidebar.workspaces")}</span>
     <button class="add" title={t("sidebar.newWorkspace")} onclick={() => app.openNewWorkspaceModal()}><Plus size={15} /></button>
   </div>
-  <div class="workspaces">
+  <div class="workspaces" data-tour="workspaces">
     {#each app.manifest.workspaces as w (w.id)}
       <div
         class="ws-row"
@@ -88,6 +89,7 @@
 
   <div
     class="tree"
+    data-tour="tabs"
     class:over={overFolder === "__root__"}
     ondragover={(e) => allowDrop(e, null)}
     ondragleave={() => (overFolder = null)}
@@ -120,6 +122,11 @@
             {#if folder.collapsed}<Folder size={14} class="ficon" />{:else}<FolderOpen size={14} class="ficon" />{/if}
             <span class="fname">{folder.name}</span>
             <span class="fcount">{app.tabsInFolder(ws, folder.id).length}</span>
+            <button
+              class="mini"
+              title={t("sidebar.newSessionInFolder")}
+              onclick={(e) => { e.stopPropagation(); app.openContextMenu(e, app.folderMenu(folder.id)); }}
+            ><Plus size={12} /></button>
             <button class="mini" title={t("sidebar.setFolderDirectory")} onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
             <button class="mini" title={t("sidebar.removeFolder")} onclick={(e) => { e.stopPropagation(); app.confirmDeleteFolder(folder.id); }}><X size={12} /></button>
           </div>
@@ -159,6 +166,7 @@
   >
     <span class="ticon" style="color:{prof.color}"><ToolIcon id={tab.panes[0]?.toolProfileId ?? "shell"} size={14} /></span>
     <span class="ttitle">{tab.title}</span>
+    <span class="tstatus" style="color:{prof.color}"><StatusDot state={app.tabStatus(tab)} /></span>
     <button class="mini" title={t("sidebar.closeTab")} onclick={(e) => { e.stopPropagation(); app.confirmCloseTab(tab.id); }}><X size={12} /></button>
   </div>
 {/snippet}
@@ -307,6 +315,15 @@
   .ticon {
     display: flex;
     flex: 0 0 auto;
+  }
+  /* Indicador some junto com os botões no hover pra não competir com eles. */
+  .tstatus {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+  }
+  .tab-row:hover .tstatus {
+    display: none;
   }
   .mini {
     display: flex;

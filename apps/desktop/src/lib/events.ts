@@ -3,3 +3,4 @@
 export const PTY_OUTPUT = "pty-output";
 export const PTY_EXIT = "pty-exit";
 export const PTY_ATTACH_DONE = "pty-attach-done";
+export const PTY_STATUS = "pty-status";

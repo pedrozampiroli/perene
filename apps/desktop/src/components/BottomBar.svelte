@@ -14,6 +14,7 @@
   import { app } from "../lib/store.svelte";
   import { PROFILES, profile } from "../lib/profiles";
   import ToolIcon from "./ToolIcon.svelte";
+  import StatusDot from "./StatusDot.svelte";
   import type { SplitDirection } from "../lib/types";
 
   const ws = $derived(app.activeWorkspace);
@@ -25,7 +26,7 @@
 
 <div class="bottombar">
   <!-- Novo terminal por perfil -->
-  <div class="group profiles">
+  <div class="group profiles" data-tour="profiles">
     {#each PROFILES as p (p.id)}
       <button class="prof" style="--c:{p.color}" title={t("bottom.newSession", { tool: p.label })} onclick={() => app.startNewSession(p.id)}>
         <ToolIcon id={p.id} size={17} />
@@ -34,7 +35,7 @@
   </div>
 
   <!-- Tira de abas do workspace ativo -->
-  <div class="group tabs">
+  <div class="group tabs" data-tour="tabstrip">
     {#if ws}
       {#each ws.tabs as tab (tab.id)}
         <button
@@ -46,6 +47,7 @@
           title={tab.title}
         >
           <span class="ti"><ToolIcon id={tab.panes[0]?.toolProfileId ?? "shell"} size={13} /></span>{tab.title}
+          <StatusDot state={app.tabStatus(tab)} size={7} />
         </button>
       {/each}
     {/if}
@@ -53,7 +55,7 @@
 
   <div class="spacer"></div>
 
-  <div class="group">
+  <div class="group" data-tour="splits">
     <button title={t("bottom.splitRight") + " (⌘D)"} onclick={() => split("horizontal")}><SquareSplitHorizontal size={16} /></button>
     <button title={t("bottom.splitDown") + " (⌘⇧D)"} onclick={() => split("vertical")}><SquareSplitVertical size={16} /></button>
     <button title={t("bottom.columns")} onclick={() => app.arrange("columns")}><Columns3 size={16} /></button>
@@ -64,10 +66,10 @@
   <div class="sep"></div>
 
   <div class="group">
-    <button title={t("bottom.fileEditor")} onclick={() => app.openFilesTab()}><Code2 size={16} /></button>
-    <button title={t("bottom.history") + " (⌘Y)"} onclick={() => (app.historyOpen = true)}><History size={16} /></button>
-    <button title={t("bottom.usage") + " (⌘U)"} onclick={() => (app.usageOpen = true)}><ChartColumn size={16} /></button>
-    <button title={t("bottom.settings") + " (⌘,)"} onclick={() => (app.settingsOpen = true)}><Settings size={16} /></button>
+    <button data-tour="editor" title={t("bottom.fileEditor")} onclick={() => app.openFilesTab()}><Code2 size={16} /></button>
+    <button data-tour="history" title={t("bottom.history") + " (⌘Y)"} onclick={() => (app.historyOpen = true)}><History size={16} /></button>
+    <button data-tour="usage" title={t("bottom.usage") + " (⌘U)"} onclick={() => (app.usageOpen = true)}><ChartColumn size={16} /></button>
+    <button data-tour="settings" title={t("bottom.settings") + " (⌘,)"} onclick={() => (app.settingsOpen = true)}><Settings size={16} /></button>
   </div>
 </div>
 

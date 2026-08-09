@@ -70,6 +70,7 @@ export interface Settings {
   sidebarWidth: number;
   editorPanelWidth: number;
   locale: string; // "" = seguir o sistema
+  onboardingDone: boolean;
 }
 
 export interface ShellOption {
@@ -122,6 +123,9 @@ export interface Commit {
   author: string;
   date: string;
 }
+
+/** O que a sessão está fazendo (indicador discreto na UI). */
+export type PaneState = "idle" | "running" | "waiting" | "done" | "error";
 
 export interface SearchHit {
   path: string;

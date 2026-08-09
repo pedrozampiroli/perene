@@ -99,6 +99,16 @@
       </select>
     </div>
 
+    <div class="row">
+      <div>
+        <div class="t">{t("onb.replay")}</div>
+        <div class="sub">{t("onb.replayHint")}</div>
+      </div>
+      <button class="tour" onclick={() => { app.settingsOpen = false; app.openOnboarding(); }}>
+        {t("onb.replayBtn")}
+      </button>
+    </div>
+
     <div class="shortcuts">
       <h3>{t("settings.shortcuts")}</h3>
       {#each shortcuts as [k, d] (k)}
@@ -181,6 +191,20 @@
     border-radius: 6px;
     font-size: 12px;
     outline: none;
+  }
+  .tour {
+    background: #3a3d41;
+    border: none;
+    color: #ddd;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .tour:hover {
+    background: #4a4d51;
+    color: #fff;
   }
   .stepper button {
     background: #3a3d41;
