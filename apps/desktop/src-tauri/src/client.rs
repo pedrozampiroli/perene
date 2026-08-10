@@ -317,17 +317,37 @@ pub fn acp_prompt(
     pane_id: String,
     text: String,
     images: Vec<perene_protocol::AcpImage>,
+    mentions: Vec<perene_protocol::AcpMention>,
 ) -> Result<(), String> {
     state.send_connected(&ClientMessage::AcpPrompt {
         pane_id,
         text,
         images,
+        mentions,
     })
 }
 
 #[tauri::command]
 pub fn acp_cancel(state: State<'_, DaemonClient>, pane_id: String) {
     let _ = state.send(&ClientMessage::AcpCancel { pane_id });
+}
+
+#[tauri::command]
+pub fn acp_set_mode(
+    state: State<'_, DaemonClient>,
+    pane_id: String,
+    mode_id: String,
+) -> Result<(), String> {
+    state.send_connected(&ClientMessage::AcpSetMode { pane_id, mode_id })
+}
+
+#[tauri::command]
+pub fn acp_set_model(
+    state: State<'_, DaemonClient>,
+    pane_id: String,
+    model_id: String,
+) -> Result<(), String> {
+    state.send_connected(&ClientMessage::AcpSetModel { pane_id, model_id })
 }
 
 #[tauri::command]

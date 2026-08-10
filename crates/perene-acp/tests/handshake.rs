@@ -143,7 +143,7 @@ fn full_turn_streams_updates_and_asks_permission() {
     let init = agent.initialize(ClientCapabilities::default()).unwrap();
     assert_eq!(init.protocol_version, 1);
 
-    let session = agent.new_session("/tmp/projeto").unwrap();
+    let session = agent.new_session("/tmp/projeto").unwrap().session_id;
     assert_eq!(session, "sess_1");
 
     let stop = agent.prompt(&session, "rode os testes").unwrap();
@@ -187,7 +187,7 @@ fn denying_permission_stops_the_turn() {
     *rec.answer.lock() = Some("deny".to_string());
 
     agent.initialize(ClientCapabilities::default()).unwrap();
-    let session = agent.new_session("/tmp/projeto").unwrap();
+    let session = agent.new_session("/tmp/projeto").unwrap().session_id;
     let stop = agent.prompt(&session, "apague tudo").unwrap();
 
     assert_eq!(

@@ -24,10 +24,10 @@ use perene_acp::{
     PermissionOutcome, RequestPermissionParams, RpcError, SpawnConfig,
 };
 use perene_protocol::{
-    AcpEvent, AcpImage, AcpMessage, DaemonMessage, PaneId, PaneState, PaneStatus,
+    AcpEvent, AcpImage, AcpMention, AcpMessage, DaemonMessage, PaneId, PaneState, PaneStatus,
 };
 
-use crate::acp_client::ClientTools;
+use crate::acp_client::{ClientTools, TerminalSnapshot};
 use crate::status::DONE_TTL;
 
 /// Quanto esperamos o usuário decidir uma permissão antes de desistir. Generoso
@@ -92,6 +92,35 @@ impl AcpSession {
             if t.len() > TRANSCRIPT_CAP {
                 let overflow = t.len() - TRANSCRIPT_CAP;
                 t.drain(0..overflow);
+            }
+        }
+        self.broadcast(DaemonMessage::Acp(AcpMessage {
+            pane_id: self.pane_id.clone(),
+            event,
+        }));
+    }
+
+    /// Publica a saída de um comando, **substituindo** o instantâneo anterior
+    /// daquele terminal no transcript.
+    ///
+    /// Um `cargo build` gera centenas de atualizações do mesmo comando; guardar
+    /// todas encheria o transcript de lixo e faria o replay do reattach
+    /// reproduzir a execução em câmera lenta. Só o estado atual importa.
+    fn emit_terminal(&self, event: AcpEvent) {
+        let AcpEvent::Terminal {
+            ref terminal_id, ..
+        } = event
+        else {
+            return;
+        };
+        {
+            let mut t = self.transcript.lock();
+            let anterior = t.iter().position(
+                |e| matches!(e, AcpEvent::Terminal { terminal_id: id, .. } if id == terminal_id),
+            );
+            match anterior {
+                Some(i) => t[i] = event.clone(),
+                None => t.push(event.clone()),
             }
         }
         self.broadcast(DaemonMessage::Acp(AcpMessage {
@@ -321,9 +350,25 @@ impl AcpManager {
                 return;
             }
             match agent.new_session(&cwd) {
-                Ok(id) => {
-                    *session.session_id.lock() = Some(id);
-                    session.emit(AcpEvent::Ready);
+                Ok(novo) => {
+                    *session.session_id.lock() = Some(novo.session_id);
+                    // A partir daqui a saída dos comandos que rodarmos vai para
+                    // a UI ao vivo, casada pelo `terminal_id` com o cartão.
+                    let alvo = Arc::clone(&session);
+                    session
+                        .tools
+                        .set_sink(Arc::new(move |snap: TerminalSnapshot| {
+                            alvo.emit_terminal(AcpEvent::Terminal {
+                                terminal_id: snap.terminal_id,
+                                output: snap.output,
+                                truncated: snap.truncated,
+                                exit_code: snap.exit_code,
+                            });
+                        }));
+                    session.emit(AcpEvent::Ready {
+                        modes: novo.modes,
+                        models: novo.models,
+                    });
                 }
                 Err(e) => {
                     session.emit(AcpEvent::Failed {
@@ -336,7 +381,7 @@ impl AcpManager {
     }
 
     /// Manda um prompt. Não bloqueia o loop do cliente: o turno pode durar minutos.
-    pub fn prompt(&self, pane_id: &str, text: &str, images: &[AcpImage]) {
+    pub fn prompt(&self, pane_id: &str, text: &str, images: &[AcpImage], mentions: &[AcpMention]) {
         let Some(session) = self.get(pane_id) else {
             return;
         };
@@ -358,6 +403,12 @@ impl AcpManager {
                 mime_type: img.mime_type.clone(),
             })
             .collect();
+        // Menções depois das imagens e antes do texto: o agente lê o pedido já
+        // sabendo de quais arquivos se fala.
+        blocks.extend(mentions.iter().map(|m| ContentBlock::ResourceLink {
+            uri: format!("file://{}", m.path),
+            name: m.name.clone(),
+        }));
         if !text.is_empty() {
             blocks.push(ContentBlock::Text {
                 text: text.to_string(),
@@ -378,6 +429,47 @@ impl AcpManager {
                     });
                     session.set_state(PaneState::Error);
                 }
+            }
+        });
+    }
+
+    /// Troca o modo de permissão da sessão (Default, Accept Edits, Plan…).
+    pub fn set_mode(&self, pane_id: &str, mode_id: &str) {
+        self.with_session(pane_id, mode_id, |agent, id, valor| {
+            agent.set_mode(id, valor)
+        });
+    }
+
+    /// Troca o modelo da sessão.
+    pub fn set_model(&self, pane_id: &str, model_id: &str) {
+        self.with_session(pane_id, model_id, |agent, id, valor| {
+            agent.set_model(id, valor)
+        });
+    }
+
+    /// Roda uma operação de controle numa thread e reporta falha no chat.
+    fn with_session(
+        &self,
+        pane_id: &str,
+        valor: &str,
+        op: impl FnOnce(&Agent, &str, &str) -> Result<(), RpcError> + Send + 'static,
+    ) {
+        let Some(session) = self.get(pane_id) else {
+            return;
+        };
+        let (agent, id) = (
+            session.agent.lock().clone(),
+            session.session_id.lock().clone(),
+        );
+        let (Some(agent), Some(id)) = (agent, id) else {
+            return;
+        };
+        let valor = valor.to_string();
+        thread::spawn(move || {
+            if let Err(e) = op(&agent, &id, &valor) {
+                session.emit(AcpEvent::Failed {
+                    message: e.to_string(),
+                });
             }
         });
     }
@@ -611,7 +703,10 @@ mod tests {
         mgr.sessions
             .lock()
             .insert("pane_1".into(), Arc::clone(&session));
-        session.emit(AcpEvent::Ready);
+        session.emit(AcpEvent::Ready {
+            modes: json!({}),
+            models: json!({}),
+        });
         session.emit(AcpEvent::Update {
             update: json!({"sessionUpdate": "agent_message_chunk"}),
         });

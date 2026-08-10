@@ -161,7 +161,9 @@ impl Connection {
     fn reply(&self, id: Value, result: Result<Value, RpcError>) {
         let msg = match result {
             Ok(v) => json!({"jsonrpc": "2.0", "id": id, "result": v}),
-            Err(e) => json!({"jsonrpc": "2.0", "id": id, "error": {"code": e.code, "message": e.message}}),
+            Err(e) => {
+                json!({"jsonrpc": "2.0", "id": id, "error": {"code": e.code, "message": e.message}})
+            }
         };
         let _ = self.send(msg);
     }
@@ -199,7 +201,9 @@ fn spawn_reader<R: Read + Send + 'static>(
             match (has_id, method) {
                 // Resposta a algo que pedimos.
                 (true, None) => {
-                    let Some(id) = msg["id"].as_u64() else { continue };
+                    let Some(id) = msg["id"].as_u64() else {
+                        continue;
+                    };
                     let waiter = conn.pending.lock().remove(&id);
                     if let Some(tx) = waiter {
                         let res = if msg["error"].is_null() {

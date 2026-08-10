@@ -220,7 +220,11 @@ impl Agent {
     }
 
     /// Abre uma sessão no diretório dado.
-    pub fn new_session(&self, cwd: &str) -> Result<SessionId, RpcError> {
+    ///
+    /// Devolve o resultado inteiro (e não só o id) porque é aqui que vêm os
+    /// modos e modelos disponíveis — a UI precisa deles para montar os
+    /// seletores.
+    pub fn new_session(&self, cwd: &str) -> Result<NewSessionResult, RpcError> {
         let params = NewSessionParams {
             cwd: cwd.to_string(),
             mcp_servers: Vec::new(),
@@ -230,9 +234,27 @@ impl Agent {
             serde_json::to_value(params).map_err(|e| RpcError::internal(e.to_string()))?,
             CONTROL_TIMEOUT,
         )?;
-        let r: NewSessionResult =
-            serde_json::from_value(v).map_err(|e| RpcError::internal(e.to_string()))?;
-        Ok(r.session_id)
+        serde_json::from_value(v).map_err(|e| RpcError::internal(e.to_string()))
+    }
+
+    /// Troca o modo de permissão da sessão (Default, Accept Edits, Plan…).
+    pub fn set_mode(&self, session_id: &str, mode_id: &str) -> Result<(), RpcError> {
+        self.conn.request(
+            "session/set_mode",
+            json!({ "sessionId": session_id, "modeId": mode_id }),
+            CONTROL_TIMEOUT,
+        )?;
+        Ok(())
+    }
+
+    /// Troca o modelo da sessão.
+    pub fn set_model(&self, session_id: &str, model_id: &str) -> Result<(), RpcError> {
+        self.conn.request(
+            "session/set_model",
+            json!({ "sessionId": session_id, "modelId": model_id }),
+            CONTROL_TIMEOUT,
+        )?;
+        Ok(())
     }
 
     /// Manda um prompt só de texto. Atalho para [`Agent::prompt_blocks`].

@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AcpImage,
+  AcpMention,
   Commit,
   DirEntry,
   GitStatus,
@@ -69,9 +70,17 @@ export const api = {
     args: string[],
     allowTerminal: boolean,
   ) => invoke<void>("acp_spawn", { paneId, cwd, program, args, allowTerminal }),
-  acpPrompt: (paneId: string, text: string, images: AcpImage[] = []) =>
-    invoke<void>("acp_prompt", { paneId, text, images }),
+  acpPrompt: (
+    paneId: string,
+    text: string,
+    images: AcpImage[] = [],
+    mentions: AcpMention[] = [],
+  ) => invoke<void>("acp_prompt", { paneId, text, images, mentions }),
   acpCancel: (paneId: string) => invoke<void>("acp_cancel", { paneId }),
+  acpSetMode: (paneId: string, modeId: string) =>
+    invoke<void>("acp_set_mode", { paneId, modeId }),
+  acpSetModel: (paneId: string, modelId: string) =>
+    invoke<void>("acp_set_model", { paneId, modelId }),
   acpPermission: (paneId: string, requestId: number, optionId: string | null) =>
     invoke<void>("acp_permission", { paneId, requestId, optionId }),
 };

@@ -78,10 +78,15 @@ pub struct NewSessionParams {
     pub mcp_servers: Vec<Value>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct NewSessionResult {
     pub session_id: SessionId,
+    /// Modos de permissão da sessão (Default, Accept Edits, Plan…). Cru: quem
+    /// define a lista é o agente, não nós.
+    pub modes: Value,
+    /// Modelos disponíveis + o atual.
+    pub models: Value,
 }
 
 /// Bloco de conteúdo de um prompt.
@@ -99,6 +104,15 @@ pub enum ContentBlock {
     Image {
         data: String,
         mime_type: String,
+    },
+    /// Arquivo mencionado com `@`. O agente decide se e quando lê — nós só
+    /// apontamos, o que evita despejar arquivo gigante no contexto à toa.
+    #[serde(rename_all = "camelCase")]
+    ResourceLink {
+        /// `file:///caminho/absoluto`.
+        uri: String,
+        /// Nome curto mostrado ao usuário.
+        name: String,
     },
 }
 
@@ -163,6 +177,13 @@ pub enum SessionUpdate {
         kind: Option<String>,
         #[serde(default)]
         status: Option<String>,
+        /// Blocos a renderizar: `content` (texto), `diff` (edição) ou
+        /// `terminal` (saída de um comando que NÓS rodamos).
+        #[serde(default)]
+        content: Value,
+        /// Arquivos que a ferramenta toca (`[{path, line}]`).
+        #[serde(default)]
+        locations: Value,
     },
     /// Progresso/fim de uma ferramenta.
     #[serde(rename_all = "camelCase")]
@@ -171,7 +192,20 @@ pub enum SessionUpdate {
         #[serde(default)]
         status: Option<String>,
         #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
         content: Value,
+        #[serde(default)]
+        locations: Value,
+    },
+    /// O modo de permissão mudou (nós pedimos, ou o agente trocou sozinho).
+    #[serde(rename_all = "camelCase")]
+    CurrentModeUpdate { current_mode_id: String },
+    /// Uma opção de configuração mudou (modo/modelo).
+    #[serde(rename_all = "camelCase")]
+    ConfigOptionUpdate {
+        #[serde(default)]
+        config_options: Value,
     },
     /// Plano de execução.
     Plan {
@@ -287,7 +321,11 @@ mod tests {
         }))
         .unwrap();
         match tc.update {
-            SessionUpdate::ToolCall { tool_call_id, title, .. } => {
+            SessionUpdate::ToolCall {
+                tool_call_id,
+                title,
+                ..
+            } => {
                 assert_eq!(tool_call_id, "c1");
                 assert_eq!(title, "Lendo arquivo");
             }

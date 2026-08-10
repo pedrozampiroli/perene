@@ -101,8 +101,14 @@ pub struct PaneStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AcpEvent {
-    /// Sessão pronta para receber prompts.
-    Ready,
+    /// Sessão pronta para receber prompts. Traz os modos de permissão e os
+    /// modelos que a sessão oferece — quem define a lista é o agente.
+    Ready {
+        #[serde(default)]
+        modes: serde_json::Value,
+        #[serde(default)]
+        models: serde_json::Value,
+    },
     /// Streaming do turno (o `session/update` cru do ACP).
     Update { update: serde_json::Value },
     /// O agente quer permissão. A UI responde com [`ClientMessage::AcpPermission`].
@@ -111,6 +117,20 @@ pub enum AcpEvent {
         request_id: u64,
         tool_call: serde_json::Value,
         options: serde_json::Value,
+    },
+    /// Saída de um comando que NÓS rodamos a pedido do agente.
+    ///
+    /// Vai à parte do `Update` porque a fonte é outra: o texto não vem do
+    /// agente, vem do processo que o daemon está executando. A UI casa pelo
+    /// `terminal_id` com o cartão da ferramenta e mostra a saída ao vivo.
+    #[serde(rename_all = "camelCase")]
+    Terminal {
+        terminal_id: String,
+        output: String,
+        truncated: bool,
+        /// `None` enquanto roda.
+        #[serde(default)]
+        exit_code: Option<i32>,
     },
     /// O turno terminou.
     #[serde(rename_all = "camelCase")]
@@ -126,6 +146,19 @@ pub struct AcpImage {
     /// Bytes em base64 puro (sem o prefixo `data:`).
     pub data_b64: String,
     pub mime_type: String,
+}
+
+/// Arquivo mencionado com `@` no prompt.
+///
+/// Vai como *link*, não como conteúdo: o agente decide se e quando ler, o que
+/// evita despejar um arquivo gigante no contexto sem necessidade.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpMention {
+    /// Caminho absoluto do arquivo.
+    pub path: String,
+    /// Nome curto mostrado ao usuário.
+    pub name: String,
 }
 
 /// Evento de sessão ACP endereçado a um pane.
@@ -160,7 +193,11 @@ pub enum ClientMessage {
     /// Input do usuário → shell (bytes crus em base64).
     Write { pane_id: PaneId, data_b64: String },
     /// Redimensiona o PTY.
-    Resize { pane_id: PaneId, cols: u16, rows: u16 },
+    Resize {
+        pane_id: PaneId,
+        cols: u16,
+        rows: u16,
+    },
     /// Mata o processo do pane e remove-o.
     Kill { pane_id: PaneId },
     /// Lista os panes vivos.
@@ -190,10 +227,19 @@ pub enum ClientMessage {
         text: String,
         #[serde(default)]
         images: Vec<AcpImage>,
+        /// Arquivos mencionados com `@`.
+        #[serde(default)]
+        mentions: Vec<AcpMention>,
     },
     /// Interrompe o turno atual.
     #[serde(rename_all = "camelCase")]
     AcpCancel { pane_id: PaneId },
+    /// Troca o modo de permissão da sessão.
+    #[serde(rename_all = "camelCase")]
+    AcpSetMode { pane_id: PaneId, mode_id: String },
+    /// Troca o modelo da sessão.
+    #[serde(rename_all = "camelCase")]
+    AcpSetModel { pane_id: PaneId, model_id: String },
     /// Resposta do usuário a um pedido de permissão.
     #[serde(rename_all = "camelCase")]
     AcpPermission {
@@ -210,7 +256,10 @@ pub enum ClientMessage {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum DaemonMessage {
     /// Resposta ao `Hello`.
-    Welcome { protocol_version: u32, daemon_pid: u32 },
+    Welcome {
+        protocol_version: u32,
+        daemon_pid: u32,
+    },
     /// Output ao vivo (coalescido por frame).
     Output(TerminalOutput),
     /// Replay de scrollback enviado logo após um `Attach`.
@@ -258,7 +307,10 @@ mod tests {
             shell: None,
         };
         let json = serde_json::to_string(&req).unwrap();
-        assert!(json.contains("\"paneId\""), "wire deve ser camelCase: {json}");
+        assert!(
+            json.contains("\"paneId\""),
+            "wire deve ser camelCase: {json}"
+        );
     }
 
     #[test]

@@ -154,7 +154,14 @@ export interface AcpPermissionOption {
 }
 
 export type AcpEvent =
-  | { kind: "ready" }
+  | { kind: "ready"; modes: AcpModes | null; models: AcpModels | null }
+  | {
+      kind: "terminal";
+      terminalId: string;
+      output: string;
+      truncated: boolean;
+      exitCode: number | null;
+    }
   | { kind: "update"; update: Record<string, unknown> }
   | {
       kind: "permission";
@@ -170,12 +177,36 @@ export interface AcpMessage {
   event: AcpEvent;
 }
 
+/** Um modo de permissão (Default, Accept Edits, Plan…) ou modelo. */
+export interface AcpOption {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface AcpModes {
+  currentModeId: string;
+  availableModes: AcpOption[];
+}
+
+/** Modelos usam `modelId` em vez de `id` — normalizamos ao ler. */
+export interface AcpModels {
+  currentModelId: string;
+  availableModels: { modelId: string; name: string; description?: string | null }[];
+}
+
 /** Comando de barra anunciado pela sessão (`/context`, `/init`, skills…). */
 export interface AcpCommand {
   name: string;
   description: string;
   /** `{ hint }` quando o comando aceita argumento. */
   input?: { hint?: string | null } | null;
+}
+
+/** Arquivo mencionado com `@` — vai como link, não como conteúdo. */
+export interface AcpMention {
+  path: string;
+  name: string;
 }
 
 /** Imagem colada, indo junto do prompt. */

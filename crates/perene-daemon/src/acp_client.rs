@@ -24,13 +24,36 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use std::time::Duration;
+
 use parking_lot::{Condvar, Mutex};
 use serde_json::{json, Value};
 
 use perene_acp::RpcError;
 
+/// Para onde vai a saída de um comando enquanto ele roda.
+///
+/// É isso que permite o cartão da ferramenta mostrar a execução ao vivo, como
+/// no Zed: quem roda o comando somos nós, então temos a saída antes mesmo de o
+/// agente pedir.
+pub type OutputSink = Arc<dyn Fn(TerminalSnapshot) + Send + Sync>;
+
+/// Estado de um comando num instante.
+#[derive(Debug, Clone)]
+pub struct TerminalSnapshot {
+    pub terminal_id: String,
+    pub output: String,
+    pub truncated: bool,
+    /// `None` enquanto roda.
+    pub exit_code: Option<i32>,
+}
+
 /// Teto padrão de saída guardada por comando (a spec deixa o agente escolher).
 const DEFAULT_OUTPUT_LIMIT: usize = 1024 * 1024;
+/// De quanto em quanto tempo publicamos a saída de um comando em andamento.
+/// Mais lento que o frame do PTY de propósito: é um cartão de chat, não um
+/// terminal — atualizar 60×/s só gastaria CPU.
+const EMIT_INTERVAL: Duration = Duration::from_millis(150);
 /// Teto de leitura de arquivo, para um `fs/read` não estourar a memória.
 const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -86,6 +109,9 @@ fn resolve_existing_prefix(path: &Path) -> PathBuf {
 
 /// Um comando rodando a pedido do agente.
 struct Terminal {
+    /// Guardado à parte do `Child` porque quem espera o processo é outra thread,
+    /// e ela leva o `Child` consigo — o kill precisa do pid de qualquer forma.
+    pid: u32,
     child: Mutex<Option<Child>>,
     output: Arc<Mutex<Output>>,
     /// `None` enquanto roda; `Some(status)` quando termina.
@@ -131,6 +157,9 @@ pub struct ClientTools {
     allow_terminal: bool,
     terminals: Mutex<HashMap<String, Arc<Terminal>>>,
     next_terminal: AtomicU64,
+    /// Publica a saída dos comandos (a UI desenha no cartão). `None` nos testes
+    /// de unidade, que só conferem o resultado final.
+    sink: Mutex<Option<OutputSink>>,
 }
 
 impl ClientTools {
@@ -141,7 +170,13 @@ impl ClientTools {
             allow_terminal,
             terminals: Mutex::new(HashMap::new()),
             next_terminal: AtomicU64::new(1),
+            sink: Mutex::new(None),
         }
+    }
+
+    /// Liga o publicador de saída (a sessão ACP o usa para emitir eventos).
+    pub fn set_sink(&self, sink: OutputSink) {
+        *self.sink.lock() = Some(sink);
     }
 
     /// Resolve um caminho pedido pelo agente dentro do escopo da sessão.
@@ -288,6 +323,7 @@ impl ClientTools {
         let mut child = cmd
             .spawn()
             .map_err(|e| invalid(format!("não consegui rodar `{program}`: {e}")))?;
+        let pid = child.id();
 
         let output = Arc::new(Mutex::new(Output {
             bytes: Vec::new(),
@@ -305,18 +341,21 @@ impl ClientTools {
 
         let exit = Arc::new((Mutex::new(None::<ExitInfo>), Condvar::new()));
         let terminal = Arc::new(Terminal {
+            pid,
             child: Mutex::new(Some(child)),
-            output,
+            output: Arc::clone(&output),
             exit: Arc::clone(&exit),
         });
 
-        // Colhe o processo numa thread: `terminal/wait_for_exit` só espera o
-        // Condvar, então vários pedidos podem esperar o mesmo comando.
+        // Colhe o processo numa thread. Tira o `Child` do mutex ANTES de esperar:
+        // segurar o lock durante o `wait()` deixaria `terminal/kill` bloqueado
+        // até o comando acabar sozinho — ou seja, o kill não mataria nada. Por
+        // isso o pid vive à parte, e é ele que o kill usa.
         {
-            let terminal = Arc::clone(&terminal);
+            let exit = Arc::clone(&exit);
+            let mut owned = terminal.child.lock().take();
             std::thread::spawn(move || {
-                let status = terminal.child.lock().as_mut().map(|c| c.wait());
-                let info = match status {
+                let info = match owned.as_mut().map(|c| c.wait()) {
                     Some(Ok(st)) => ExitInfo {
                         code: st.code(),
                         signal: exit_signal(&st),
@@ -336,6 +375,13 @@ impl ClientTools {
             "term_{}",
             self.next_terminal.fetch_add(1, Ordering::Relaxed)
         );
+
+        // Publica a saída enquanto roda: é o que faz o cartão da ferramenta
+        // mostrar a execução ao vivo em vez de só o resultado no fim.
+        if let Some(sink) = self.sink.lock().clone() {
+            spawn_emitter(id.clone(), output, Arc::clone(&exit), sink);
+        }
+
         self.terminals.lock().insert(id.clone(), terminal);
         Ok(json!({ "terminalId": id }))
     }
@@ -403,22 +449,64 @@ fn drain(mut stream: impl Read + Send + 'static, output: Arc<Mutex<Output>>) {
 }
 
 /// Mata o comando e seus descendentes (um `sh -c` vira filho de novo).
+///
+/// Usa o pid guardado, não o `Child`: quem tem o handle é a thread que espera o
+/// processo, e ela está bloqueada — pedir o lock dela aqui seria esperar
+/// justamente o que queremos interromper.
 fn kill_child(terminal: &Terminal) {
-    let mut guard = terminal.child.lock();
-    let Some(child) = guard.as_mut() else { return };
     #[cfg(unix)]
     unsafe {
-        libc::killpg(child.id() as i32, libc::SIGKILL);
+        libc::killpg(terminal.pid as i32, libc::SIGKILL);
+        // O grupo cobre os netos; o próprio processo pode ter trocado de grupo.
+        libc::kill(terminal.pid as i32, libc::SIGKILL);
     }
     #[cfg(windows)]
     {
         let _ = Command::new("taskkill")
-            .args(["/T", "/F", "/PID", &child.id().to_string()])
+            .args(["/T", "/F", "/PID", &terminal.pid.to_string()])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
     }
-    let _ = child.kill();
+}
+
+/// Publica a saída de um comando periodicamente, e uma última vez ao terminar.
+///
+/// Coalescido: só emite quando algo mudou. Um `cargo build` cospe milhares de
+/// linhas, e mandar cada uma pelo IPC inflaria o tráfego sem a UI ganhar nada.
+fn spawn_emitter(
+    terminal_id: String,
+    output: Arc<Mutex<Output>>,
+    exit: Arc<(Mutex<Option<ExitInfo>>, Condvar)>,
+    sink: OutputSink,
+) {
+    std::thread::spawn(move || {
+        let mut ultimo = usize::MAX;
+        loop {
+            let (texto, truncado, tamanho) = {
+                let out = output.lock();
+                (
+                    String::from_utf8_lossy(&out.bytes).to_string(),
+                    out.truncated,
+                    out.bytes.len(),
+                )
+            };
+            let saiu = *exit.0.lock();
+            if tamanho != ultimo || saiu.is_some() {
+                ultimo = tamanho;
+                sink(TerminalSnapshot {
+                    terminal_id: terminal_id.clone(),
+                    output: texto,
+                    truncated: truncado,
+                    exit_code: saiu.and_then(|e| e.code),
+                });
+            }
+            if saiu.is_some() {
+                return; // já publicamos o estado final
+            }
+            std::thread::sleep(EMIT_INTERVAL);
+        }
+    });
 }
 
 #[cfg(unix)]

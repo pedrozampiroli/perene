@@ -7,14 +7,16 @@
   // fechada no meio de um turno.
 
   import { onMount, tick } from "svelte";
-  import { ArrowUp, Check, Square, Wrench, X } from "@lucide/svelte";
+  import { ArrowUp, AtSign, Brain, Check, ChevronRight, Square, X } from "@lucide/svelte";
   import { acp } from "../lib/acp.svelte";
   import { api } from "../lib/api";
   import { app } from "../lib/store.svelte";
   import { t } from "../lib/i18n.svelte";
   import { renderMarkdown } from "../lib/markdown";
+  import { baseName } from "../lib/paths";
   import { acpConfig } from "../lib/profiles";
-  import type { AcpImage } from "../lib/types";
+  import type { AcpImage, AcpMention } from "../lib/types";
+  import AcpToolCard from "./AcpToolCard.svelte";
 
   let { paneId }: { paneId: string } = $props();
 
@@ -24,39 +26,82 @@
   let sending = $state(false);
   /** Imagens coladas, aguardando envio junto do texto. */
   let anexos = $state<AcpImage[]>([]);
-  /** Índice selecionado no menu de comandos (−1 = menu fechado). */
-  let cmdIndex = $state(-1);
+  /** Arquivos mencionados com `@`, idem. */
+  let mencoes = $state<AcpMention[]>([]);
+  /** Raciocínios expandidos (colapsados por padrão, como no Zed). */
+  let pensamentosAbertos = $state<Record<number, boolean>>({});
+  /** Índice selecionado no menu de autocomplete (−1 = fechado). */
+  let sugIndex = $state(-1);
+  /** Arquivos do projeto, carregados sob demanda no primeiro `@`. */
+  let arquivos = $state<string[]>([]);
+  let carregandoArquivos = false;
   /** Só rola sozinho se o usuário já estava no fim (não sequestra a leitura). */
   let pinned = true;
 
   const conv = $derived(acp.get(paneId));
   const pane = $derived(app.findPane(paneId));
   const canSend = $derived(
-    conv.ready && !conv.busy && (input.trim().length > 0 || anexos.length > 0),
+    conv.ready && !conv.busy && (input.trim().length > 0 || anexos.length > 0 || mencoes.length > 0),
   );
 
-  // ── Comandos de barra ──────────────────────────────────────────────────────
-  // O menu só aparece enquanto a primeira palavra está sendo digitada: depois do
-  // espaço o usuário já escolheu e está passando argumento.
-  const cmdQuery = $derived.by(() => {
-    const m = /^\/(\S*)$/.exec(input);
-    return m ? m[1].toLowerCase() : null;
+  // ── Autocomplete: `/comando` e `@arquivo` ─────────────────────────────────
+  // Só enquanto a palavra está sendo digitada no fim do texto; depois do espaço
+  // o usuário já escolheu.
+  const gatilho = $derived.by(() => {
+    const m = /(^|\s)([/@])(\S*)$/.exec(input);
+    if (!m) return null;
+    // `/` só vale no começo do prompt (é comando, não caminho).
+    if (m[2] === "/" && m.index !== 0) return null;
+    return { tipo: m[2] as "/" | "@", termo: m[3].toLowerCase(), inicio: m.index + m[1].length };
   });
-  const cmdMatches = $derived.by(() => {
-    if (cmdQuery === null) return [];
-    return conv.commands
-      .filter((c) => c.name.toLowerCase().startsWith(cmdQuery))
-      .slice(0, 8);
+
+  const sugestoes = $derived.by(() => {
+    if (!gatilho) return [] as { valor: string; rotulo: string; detalhe: string }[];
+    if (gatilho.tipo === "/") {
+      return conv.commands
+        .filter((c) => c.name.toLowerCase().startsWith(gatilho.termo))
+        .slice(0, 8)
+        .map((c) => ({ valor: c.name, rotulo: `/${c.name}`, detalhe: c.description }));
+    }
+    const termo = gatilho.termo;
+    return arquivos
+      .filter((f) => f.toLowerCase().includes(termo))
+      .slice(0, 8)
+      .map((f) => ({ valor: f, rotulo: baseName(f), detalhe: f }));
   });
 
   $effect(() => {
-    // Reabriu o menu → começa na primeira opção; sumiu → fecha.
-    cmdIndex = cmdMatches.length > 0 ? Math.min(Math.max(cmdIndex, 0), cmdMatches.length - 1) : -1;
+    sugIndex = sugestoes.length > 0 ? Math.min(Math.max(sugIndex, 0), sugestoes.length - 1) : -1;
   });
 
-  function pickCommand(name: string) {
-    input = `/${name} `;
-    cmdIndex = -1;
+  // Carrega a lista de arquivos na primeira vez que o usuário digita `@`.
+  $effect(() => {
+    if (gatilho?.tipo !== "@" || arquivos.length > 0 || carregandoArquivos) return;
+    const dir = app.findPane(paneId)?.workingDirectory;
+    if (!dir) return;
+    carregandoArquivos = true;
+    void api
+      .fsListFiles(dir, 5000)
+      .then((f) => (arquivos = f))
+      .catch(() => {})
+      .finally(() => (carregandoArquivos = false));
+  });
+
+  function escolher(i: number) {
+    const s = sugestoes[i];
+    if (!s || !gatilho) return;
+    if (gatilho.tipo === "/") {
+      input = `/${s.valor} `;
+    } else {
+      const dir = app.findPane(paneId)?.workingDirectory ?? "";
+      const absoluto = s.valor.startsWith("/") ? s.valor : `${dir}/${s.valor}`;
+      if (!mencoes.some((m) => m.path === absoluto)) {
+        mencoes = [...mencoes, { path: absoluto, name: baseName(s.valor) }];
+      }
+      // Tira o `@termo` do texto: o arquivo vira um chip acima da caixa.
+      input = input.slice(0, gatilho.inicio) + input.slice(gatilho.inicio).replace(/^@\S*/, "");
+    }
+    sugIndex = -1;
     box?.focus();
   }
 
@@ -88,42 +133,46 @@
 
   async function send() {
     const text = input.trim();
-    if ((!text && anexos.length === 0) || !conv.ready || conv.busy) return;
+    if (!canSend) return;
     const images = anexos;
+    const links = mencoes;
     sending = true;
-    acp.pushUserPrompt(paneId, text, images);
+    // O eco mostra as menções junto — é o que o agente vai receber.
+    const eco = links.length > 0 ? `${text}\n\n${links.map((m) => `\`@${m.name}\``).join(" ")}` : text;
+    acp.pushUserPrompt(paneId, eco, images);
     input = "";
     anexos = [];
-    cmdIndex = -1;
+    mencoes = [];
+    sugIndex = -1;
     pinned = true;
     try {
-      await api.acpPrompt(paneId, text, images);
+      await api.acpPrompt(paneId, text, images, links);
     } finally {
       sending = false;
     }
   }
 
   function onKey(e: KeyboardEvent) {
-    // Com o menu de comandos aberto, as setas navegam nele e o Enter escolhe.
-    if (cmdIndex >= 0 && cmdMatches.length > 0) {
+    // Com o autocomplete aberto, as setas navegam nele e o Enter escolhe.
+    if (sugIndex >= 0 && sugestoes.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        cmdIndex = (cmdIndex + 1) % cmdMatches.length;
+        sugIndex = (sugIndex + 1) % sugestoes.length;
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        cmdIndex = (cmdIndex - 1 + cmdMatches.length) % cmdMatches.length;
+        sugIndex = (sugIndex - 1 + sugestoes.length) % sugestoes.length;
         return;
       }
       if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
         e.preventDefault();
-        pickCommand(cmdMatches[cmdIndex].name);
+        escolher(sugIndex);
         return;
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        cmdIndex = -1;
+        sugIndex = -1;
         return;
       }
     }
@@ -157,10 +206,6 @@
     return btoa(bin);
   }
 
-  function removeAnexo(i: number) {
-    anexos = anexos.filter((_, n) => n !== i);
-  }
-
   function answer(optionId: string | null) {
     const pending = conv.permission;
     if (!pending) return;
@@ -172,9 +217,60 @@
   function isAllow(kind?: string | null): boolean {
     return !!kind && kind.startsWith("allow");
   }
+
+  function trocarModo(id: string) {
+    acp.setMode(paneId, id);
+    void api.acpSetMode(paneId, id).catch(() => {});
+  }
+
+  function trocarModelo(id: string) {
+    acp.setModel(paneId, id);
+    void api.acpSetModel(paneId, id).catch(() => {});
+  }
+
+  /** Contexto consumido, arredondado para o que cabe no rodapé. */
+  const usoPct = $derived.by(() => {
+    const u = conv.usage;
+    if (!u || !u.size) return null;
+    return Math.min(100, Math.round((u.used / u.size) * 100));
+  });
 </script>
 
 <div class="acp" onpointerdown={() => app.setActivePane(paneId)}>
+  {#if conv.modes.available.length > 0 || conv.models.available.length > 0}
+    <div class="bar">
+      {#if conv.modes.available.length > 0}
+        <select
+          class="sel"
+          title={t("acp.mode")}
+          value={conv.modes.current}
+          onchange={(e) => trocarModo(e.currentTarget.value)}
+        >
+          {#each conv.modes.available as m (m.id)}
+            <option value={m.id}>{m.name}</option>
+          {/each}
+        </select>
+      {/if}
+      {#if conv.models.available.length > 0}
+        <select
+          class="sel"
+          title={t("acp.model")}
+          value={conv.models.current}
+          onchange={(e) => trocarModelo(e.currentTarget.value)}
+        >
+          {#each conv.models.available as m (m.id)}
+            <option value={m.id}>{m.name}</option>
+          {/each}
+        </select>
+      {/if}
+      {#if usoPct !== null}
+        <span class="uso" class:alto={usoPct >= 80} title={t("acp.contextUsed")}>
+          {usoPct}%
+        </span>
+      {/if}
+    </div>
+  {/if}
+
   <div class="log" bind:this={scroller} onscroll={onScroll}>
     {#if !conv.ready && conv.blocks.length === 0}
       <div class="hint">{t("acp.starting")}</div>
@@ -188,13 +284,28 @@
           <div class="md">{@html renderMarkdown(block.text)}</div>
         </div>
       {:else if block.kind === "thought"}
-        <div class="thought">{block.text}</div>
-      {:else if block.kind === "tool"}
-        <div class="tool" class:done={block.status === "completed"} class:failed={block.status === "failed"}>
-          <Wrench size={12} />
-          <span class="tname">{block.text}</span>
-          <span class="tstatus">{block.status ?? ""}</span>
+        <div class="thought">
+          <button
+            class="thead"
+            onclick={() =>
+              (pensamentosAbertos[block.id] = !pensamentosAbertos[block.id])}
+          >
+            <span class="chev" class:open={pensamentosAbertos[block.id]}>
+              <ChevronRight size={11} />
+            </span>
+            <Brain size={11} />
+            <span>{t("acp.thinking")}</span>
+          </button>
+          {#if pensamentosAbertos[block.id]}
+            <div class="tbody">{block.text}</div>
+          {/if}
         </div>
+      {:else if block.kind === "tool"}
+        <AcpToolCard
+          {block}
+          terminals={conv.terminals}
+          onOpenFile={(path, line) => app.openInEditor?.(path, line)}
+        />
       {:else}
         <div class="notice" class:err={block.level === "error"}>{block.text}</div>
       {/if}
@@ -225,28 +336,45 @@
   </div>
 
   <div class="composer-wrap">
-    {#if cmdIndex >= 0 && cmdMatches.length > 0}
-      <div class="cmds">
-        {#each cmdMatches as cmd, i (cmd.name)}
+    {#if sugIndex >= 0 && sugestoes.length > 0}
+      <div class="sugs">
+        {#each sugestoes as s, i (s.valor)}
           <button
-            class="cmd"
-            class:sel={i === cmdIndex}
-            onmouseenter={() => (cmdIndex = i)}
-            onclick={() => pickCommand(cmd.name)}
+            class="sug"
+            class:sel={i === sugIndex}
+            onmouseenter={() => (sugIndex = i)}
+            onclick={() => escolher(i)}
           >
-            <span class="cname">/{cmd.name}</span>
-            <span class="cdesc">{cmd.description}</span>
+            <span class="srot">{s.rotulo}</span>
+            <span class="sdet">{s.detalhe}</span>
           </button>
         {/each}
       </div>
     {/if}
 
-    {#if anexos.length > 0}
+    {#if anexos.length > 0 || mencoes.length > 0}
       <div class="anexos">
+        {#each mencoes as m, i (m.path)}
+          <span class="chip" title={m.path}>
+            <AtSign size={10} />
+            {m.name}
+            <button
+              class="rmchip"
+              title={t("acp.removeMention")}
+              onclick={() => (mencoes = mencoes.filter((_, n) => n !== i))}
+            >
+              <X size={9} />
+            </button>
+          </span>
+        {/each}
         {#each anexos as img, i (i)}
           <div class="anexo">
             <img src={`data:${img.mimeType};base64,${img.dataB64}`} alt="" />
-            <button class="rm" title={t("acp.removeImage")} onclick={() => removeAnexo(i)}>
+            <button
+              class="rm"
+              title={t("acp.removeImage")}
+              onclick={() => (anexos = anexos.filter((_, n) => n !== i))}
+            >
               <X size={10} />
             </button>
           </div>
@@ -288,6 +416,37 @@
     color: #d4d4d4;
     font-size: 12.5px;
     line-height: 1.55;
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-bottom: 1px solid #2a2a2a;
+    flex: 0 0 auto;
+  }
+  .sel {
+    background: #252526;
+    border: 1px solid #3a3d41;
+    border-radius: 4px;
+    color: #cccccc;
+    font: inherit;
+    font-size: 10.5px;
+    padding: 1px 4px;
+    max-width: 150px;
+  }
+  .sel:focus {
+    outline: none;
+    border-color: #4a7fb5;
+  }
+  .uso {
+    margin-left: auto;
+    font-size: 10px;
+    color: #6a6a6a;
+    font-variant-numeric: tabular-nums;
+  }
+  .uso.alto {
+    color: #d9b45f;
   }
   .log {
     flex: 1 1 auto;
@@ -398,42 +557,38 @@
     margin: 10px 0;
   }
 
-  .thought {
+  /* ── Raciocínio ───────────────────────────────────────────────────────── */
+  .thead {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: none;
+    color: #6a6a6a;
+    font: inherit;
+    font-size: 11px;
+    padding: 0;
+    cursor: pointer;
+  }
+  .thead:hover {
+    color: #9aa0a6;
+  }
+  .chev {
+    display: flex;
+    transition: transform 0.12s ease;
+  }
+  .chev.open {
+    transform: rotate(90deg);
+  }
+  .tbody {
     color: #7b7b7b;
     font-style: italic;
     white-space: pre-wrap;
     border-left: 2px solid #2f2f2f;
     padding-left: 8px;
+    margin-top: 4px;
   }
-  .tool {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: #9aa0a6;
-    background: #232323;
-    border: 1px solid #2c2c2c;
-    border-radius: 5px;
-    padding: 4px 8px;
-    font-size: 11.5px;
-  }
-  .tool.done {
-    color: #7fb98a;
-    border-color: #2f3b32;
-  }
-  .tool.failed {
-    color: #e08b8b;
-    border-color: #3f2e2e;
-  }
-  .tname {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .tstatus {
-    margin-left: auto;
-    color: #6a6a6a;
-    font-size: 10px;
-  }
+
   .plan {
     margin: 0;
     padding-left: 18px;
@@ -516,7 +671,7 @@
     flex: 0 0 auto;
     border-top: 1px solid #2a2a2a;
   }
-  .cmds {
+  .sugs {
     position: absolute;
     bottom: 100%;
     left: 12px;
@@ -530,7 +685,7 @@
     margin-bottom: 6px;
     z-index: 5;
   }
-  .cmd {
+  .sug {
     display: flex;
     align-items: baseline;
     gap: 8px;
@@ -544,31 +699,56 @@
     font-size: 11.5px;
     cursor: pointer;
   }
-  .cmd.sel {
+  .sug.sel {
     background: #094771;
   }
-  .cname {
+  .srot {
     color: #6ea8fe;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     flex: 0 0 auto;
   }
-  .cmd.sel .cname {
+  .sug.sel .srot {
     color: #cfe3ff;
   }
-  .cdesc {
+  .sdet {
     color: #8a8a8a;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    direction: rtl; /* caminho longo: o fim importa mais que o começo */
+    text-align: left;
   }
-  .cmd.sel .cdesc {
+  .sug.sel .sdet {
     color: #cfd6dd;
   }
   .anexos {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
+    align-items: center;
     padding: 8px 12px 0;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: #252d38;
+    border: 1px solid #35455a;
+    border-radius: 3px;
+    color: #a9c6ea;
+    font-size: 10.5px;
+    padding: 1px 4px 1px 5px;
+  }
+  .rmchip {
+    display: flex;
+    background: none;
+    border: none;
+    color: #6a8199;
+    cursor: pointer;
+    padding: 0 0 0 2px;
+  }
+  .rmchip:hover {
+    color: #e08b8b;
   }
   .anexo {
     position: relative;

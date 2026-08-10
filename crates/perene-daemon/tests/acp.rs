@@ -211,6 +211,7 @@ fn ask(client: &mut LineClient, pane_id: &str, prompt: &str) -> String {
         pane_id: pane_id.to_string(),
         text: prompt.to_string(),
         images: Vec::new(),
+        mentions: Vec::new(),
     });
     client
         .collect_acp(Duration::from_secs(15), |evs| {
@@ -227,10 +228,10 @@ fn ask(client: &mut LineClient, pane_id: &str, prompt: &str) -> String {
 
 fn ready(client: &mut LineClient) {
     let evs = client.collect_acp(Duration::from_secs(10), |evs| {
-        evs.iter().any(|e| matches!(e, AcpEvent::Ready))
+        evs.iter().any(|e| matches!(e, AcpEvent::Ready { .. }))
     });
     assert!(
-        evs.iter().any(|e| matches!(e, AcpEvent::Ready)),
+        evs.iter().any(|e| matches!(e, AcpEvent::Ready { .. })),
         "a sessão devia ficar pronta: {evs:?}"
     );
 }
@@ -247,10 +248,10 @@ fn full_turn_streams_asks_permission_and_survives_the_window_closing() {
     spawn_fake_agent(&mut c1, pane_id, dir.path());
 
     let ready = c1.collect_acp(Duration::from_secs(10), |evs| {
-        evs.iter().any(|e| matches!(e, AcpEvent::Ready))
+        evs.iter().any(|e| matches!(e, AcpEvent::Ready { .. }))
     });
     assert!(
-        ready.iter().any(|e| matches!(e, AcpEvent::Ready)),
+        ready.iter().any(|e| matches!(e, AcpEvent::Ready { .. })),
         "a sessão devia ficar pronta; veio {ready:?}"
     );
 
@@ -258,6 +259,7 @@ fn full_turn_streams_asks_permission_and_survives_the_window_closing() {
         pane_id: pane_id.to_string(),
         text: "rode os testes".into(),
         images: Vec::new(),
+        mentions: Vec::new(),
     });
 
     // Streaming + o pedido de permissão, que trava o agente.
@@ -324,7 +326,7 @@ fn full_turn_streams_asks_permission_and_survives_the_window_closing() {
         evs.iter().any(|e| matches!(e, AcpEvent::TurnEnded { .. }))
     });
     assert!(
-        replay.iter().any(|e| matches!(e, AcpEvent::Ready)),
+        replay.iter().any(|e| matches!(e, AcpEvent::Ready { .. })),
         "o replay começa do início da sessão: {replay:?}"
     );
     assert!(
@@ -346,6 +348,7 @@ fn full_turn_streams_asks_permission_and_survives_the_window_closing() {
         pane_id: pane_id.to_string(),
         text: "de novo".into(),
         images: Vec::new(),
+        mentions: Vec::new(),
     });
     let again = c2.collect_acp(Duration::from_secs(10), |evs| {
         evs.iter().any(|e| {
@@ -429,6 +432,63 @@ fn the_agent_runs_commands_through_us_only_when_allowed() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn command_output_streams_to_the_ui_while_it_runs() {
+    // O cartão de ferramenta mostra a execução ao vivo porque quem roda o
+    // comando somos nós. Isto prova as duas metades: chega saída ANTES de o
+    // comando acabar, e o estado final traz o código de saída.
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = start_daemon(dir.path());
+    let pane_id = "pane_stream";
+
+    let mut c = LineClient::connect(&endpoint).unwrap();
+    hello(&mut c);
+    spawn_fake_agent_with(&mut c, pane_id, dir.path(), Vec::new(), true);
+    ready(&mut c);
+
+    // Imprime, dorme, imprime: sem streaming a UI só veria tudo no fim.
+    c.send(&ClientMessage::AcpPrompt {
+        pane_id: pane_id.to_string(),
+        text: "#sh echo COMECO; sleep 1; echo FIM".into(),
+        images: Vec::new(),
+        mentions: Vec::new(),
+    });
+
+    let mut parcial = None;
+    let mut final_ = None;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline && final_.is_none() {
+        if let Some(DaemonMessage::Acp(m)) = c.next_msg(deadline) {
+            if let AcpEvent::Terminal {
+                output, exit_code, ..
+            } = m.event
+            {
+                match exit_code {
+                    // Ainda rodando: já tem a primeira linha, não a segunda?
+                    None if parcial.is_none() && output.contains("COMECO") => {
+                        parcial = Some(output);
+                    }
+                    Some(code) => final_ = Some((output, code)),
+                    None => {}
+                }
+            }
+        }
+    }
+
+    let parcial = parcial.expect("devia ter chegado saída antes de o comando terminar");
+    assert!(
+        !parcial.contains("FIM"),
+        "isto não é streaming: veio tudo de uma vez ({parcial:?})"
+    );
+    let (saida, code) = final_.expect("faltou o estado final do comando");
+    assert!(
+        saida.contains("COMECO") && saida.contains("FIM"),
+        "{saida:?}"
+    );
+    assert_eq!(code, 0, "o comando terminou bem");
+}
+
 #[test]
 fn pasted_images_travel_with_the_prompt() {
     // Colar print no chat é metade do uso real. O agente precisa receber o bloco
@@ -450,6 +510,7 @@ fn pasted_images_travel_with_the_prompt() {
             data_b64: "aGVsbG8=".into(),
             mime_type: "image/png".into(),
         }],
+        mentions: Vec::new(),
     });
     let resposta: String = c
         .collect_acp(Duration::from_secs(15), |evs| {
@@ -499,9 +560,9 @@ fn killing_the_pane_takes_the_whole_process_tree_down() {
         pane_id: pane_id.to_string(),
     });
     let evs = c.collect_acp(Duration::from_secs(10), |evs| {
-        evs.iter().any(|e| matches!(e, AcpEvent::Ready))
+        evs.iter().any(|e| matches!(e, AcpEvent::Ready { .. }))
     });
-    assert!(evs.iter().any(|e| matches!(e, AcpEvent::Ready)));
+    assert!(evs.iter().any(|e| matches!(e, AcpEvent::Ready { .. })));
 
     // O neto tem que estar batendo antes de julgarmos a morte dele.
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -548,13 +609,14 @@ fn denying_permission_refuses_the_turn() {
     hello(&mut c);
     spawn_fake_agent(&mut c, pane_id, dir.path());
     c.collect_acp(Duration::from_secs(10), |evs| {
-        evs.iter().any(|e| matches!(e, AcpEvent::Ready))
+        evs.iter().any(|e| matches!(e, AcpEvent::Ready { .. }))
     });
 
     c.send(&ClientMessage::AcpPrompt {
         pane_id: pane_id.to_string(),
         text: "apague tudo".into(),
         images: Vec::new(),
+        mentions: Vec::new(),
     });
     let evs = c.collect_acp(Duration::from_secs(10), |evs| {
         evs.iter().any(|e| matches!(e, AcpEvent::Permission { .. }))
@@ -615,11 +677,11 @@ fn real_adapter_answers_a_prompt() {
     // `npx` pode baixar o adapter na primeira vez.
     let evs = c.collect_acp(Duration::from_secs(180), |evs| {
         evs.iter()
-            .any(|e| matches!(e, AcpEvent::Ready | AcpEvent::Failed { .. }))
+            .any(|e| matches!(e, AcpEvent::Ready { .. } | AcpEvent::Failed { .. }))
     });
     println!("handshake: {evs:?}");
     assert!(
-        evs.iter().any(|e| matches!(e, AcpEvent::Ready)),
+        evs.iter().any(|e| matches!(e, AcpEvent::Ready { .. })),
         "não ficou pronto: {evs:?}"
     );
 
@@ -627,6 +689,7 @@ fn real_adapter_answers_a_prompt() {
         pane_id: pane_id.into(),
         text: "Responda apenas: PERENE_OK".into(),
         images: Vec::new(),
+        mentions: Vec::new(),
     });
     let turn = c.collect_acp(Duration::from_secs(180), |evs| {
         evs.iter()

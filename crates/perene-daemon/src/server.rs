@@ -304,8 +304,13 @@ fn dispatch(
             pane_id,
             text,
             images,
-        } => mgr.acp().prompt(&pane_id, &text, &images),
+            mentions,
+        } => mgr.acp().prompt(&pane_id, &text, &images, &mentions),
         ClientMessage::AcpCancel { pane_id } => mgr.acp().cancel(&pane_id),
+        ClientMessage::AcpSetMode { pane_id, mode_id } => mgr.acp().set_mode(&pane_id, &mode_id),
+        ClientMessage::AcpSetModel { pane_id, model_id } => {
+            mgr.acp().set_model(&pane_id, &model_id)
+        }
         ClientMessage::AcpPermission {
             pane_id,
             request_id,
