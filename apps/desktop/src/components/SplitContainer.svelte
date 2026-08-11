@@ -68,7 +68,7 @@
   .divider {
     position: relative;
     flex: 0 0 4px;
-    background: #2a2a2a;
+    background: var(--elevated);
     z-index: 5;
   }
   /* Área de clique maior que a linha (mais fácil de pegar). */
@@ -93,7 +93,7 @@
   }
   .divider:hover,
   .dragging .divider {
-    background: #007acc;
+    background: var(--accent);
   }
   /* Enquanto arrasta, não seleciona texto nem deixa o terminal capturar. */
   .split.dragging {

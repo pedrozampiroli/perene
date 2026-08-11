@@ -1,52 +1,61 @@
 // Editor CodeMirror 6: numeração de linhas, busca/substituição (⌘F/⌘⇧F via
-// basicSetup), ⌘S salva, syntax highlight tema dark (one-dark ≈ Dark+).
+// basicSetup), ⌘S salva.
+//
+// Cores e linguagens saem daqui de propósito: o tema vem de `theme.svelte.ts`
+// (o mesmo que pinta a UI e o terminal) e o mapa de linguagens de
+// `languages.ts`. Antes eram `oneDark` fixo em três lugares e um switch com 8
+// extensões.
 
 import { EditorView, keymap } from "@codemirror/view";
-import { EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { MergeView } from "@codemirror/merge";
 import { basicSetup } from "codemirror";
 import { indentWithTab } from "@codemirror/commands";
-import { oneDark } from "@codemirror/theme-one-dark";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { html } from "@codemirror/lang-html";
-import { css } from "@codemirror/lang-css";
-import { rust } from "@codemirror/lang-rust";
-import { python } from "@codemirror/lang-python";
 
-function langFor(filename: string): Extension[] {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  switch (ext) {
-    case "js":
-    case "jsx":
-    case "mjs":
-    case "cjs":
-      return [javascript()];
-    case "ts":
-    case "tsx":
-      return [javascript({ typescript: true })];
-    case "json":
-      return [json()];
-    case "md":
-    case "markdown":
-      return [markdown()];
-    case "html":
-    case "htm":
-    case "svelte":
-    case "vue":
-      return [html()];
-    case "css":
-    case "scss":
-    case "less":
-      return [css()];
-    case "rs":
-      return [rust()];
-    case "py":
-      return [python()];
-    default:
-      return [];
+import { langFor } from "./languages";
+import { theme, themeExtensions } from "./theme.svelte";
+
+/** O tema fica num compartment pra poder ser trocado num editor JÁ ABERTO —
+ *  sem isso, mudar de tema só valeria para arquivos abertos depois. */
+const themeCompartment = new Compartment();
+
+/** Views vivas, para o `repaintAll` alcançar todas. */
+const liveViews = new Set<EditorView>();
+
+function themeExtension(): Extension {
+  return themeCompartment.of(themeExtensions(theme.current));
+}
+
+/** Reaplica o tema atual em todos os editores abertos. */
+export function repaintEditors(): void {
+  const next = themeExtensions(theme.current);
+  for (const view of liveViews) {
+    view.dispatch({ effects: themeCompartment.reconfigure(next) });
   }
+}
+
+/** Registra a view e garante a baixa quando ela morre. */
+function track(view: EditorView): EditorView {
+  liveViews.add(view);
+  const originalDestroy = view.destroy.bind(view);
+  view.destroy = () => {
+    liveViews.delete(view);
+    originalDestroy();
+  };
+  return view;
+}
+
+function saveKeymap(onSave: (content: string) => void): Extension {
+  return keymap.of([
+    {
+      key: "Mod-s",
+      preventDefault: true,
+      run: (view) => {
+        onSave(view.state.doc.toString());
+        return true;
+      },
+    },
+  ]);
 }
 
 /** Estado de edição de um arquivo (para o editor multi-abas trocar via setState,
@@ -61,23 +70,13 @@ export function createFileState(
     doc: content,
     extensions: [
       basicSetup,
-      oneDark,
+      themeExtension(),
       keymap.of([indentWithTab]),
-      keymap.of([
-        {
-          key: "Mod-s",
-          preventDefault: true,
-          run: (view) => {
-            onSave(view.state.doc.toString());
-            return true;
-          },
-        },
-      ]),
+      saveKeymap(onSave),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) onDirty();
       }),
       ...langFor(filename),
-      EditorView.theme({ "&": { height: "100%" }, ".cm-scroller": { overflow: "auto" } }),
     ],
   });
 }
@@ -91,13 +90,12 @@ export function createMergeView(
 ): MergeView {
   const common: Extension[] = [
     basicSetup,
-    oneDark,
+    themeExtension(),
     ...langFor(filename),
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
-    EditorView.theme({ "&": { height: "100%" }, ".cm-scroller": { overflow: "auto" } }),
   ];
-  return new MergeView({
+  const merge = new MergeView({
     a: { doc: oldDoc, extensions: common },
     b: { doc: newDoc, extensions: common },
     parent,
@@ -105,6 +103,9 @@ export function createMergeView(
     highlightChanges: true,
     collapseUnchanged: { margin: 3, minSize: 4 },
   });
+  track(merge.a);
+  track(merge.b);
+  return merge;
 }
 
 export function createEditor(
@@ -113,26 +114,15 @@ export function createEditor(
   filename: string,
   onSave: (content: string) => void,
 ): EditorView {
-  const save = keymap.of([
-    {
-      key: "Mod-s",
-      preventDefault: true,
-      run: (view) => {
-        onSave(view.state.doc.toString());
-        return true;
-      },
-    },
-  ]);
   const state = EditorState.create({
     doc,
     extensions: [
       basicSetup,
-      oneDark,
+      themeExtension(),
       keymap.of([indentWithTab]),
-      save,
+      saveKeymap(onSave),
       ...langFor(filename),
-      EditorView.theme({ "&": { height: "100%" }, ".cm-scroller": { overflow: "auto" } }),
     ],
   });
-  return new EditorView({ state, parent });
+  return track(new EditorView({ state, parent }));
 }

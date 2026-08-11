@@ -44,7 +44,7 @@
 
   /* Esperando aprovação: respira (mais suave que piscar). */
   .waiting {
-    background: #e2b341;
+    background: var(--warning);
     box-shadow: 0 0 0 0 rgba(226, 179, 65, 0.5);
     animation: breathe 1.6s ease-in-out infinite;
   }
@@ -62,11 +62,11 @@
 
   /* Terminou: entra suave e fica aceso (o daemon apaga sozinho depois). */
   .done {
-    background: #3fb950;
+    background: var(--success);
     animation: appear 0.35s ease;
   }
   .error {
-    background: #f14c4c;
+    background: var(--danger);
     animation: appear 0.35s ease;
   }
   @keyframes appear {

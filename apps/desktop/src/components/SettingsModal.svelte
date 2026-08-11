@@ -4,9 +4,12 @@
   import { app } from "../lib/store.svelte";
   import { api } from "../lib/api";
   import { t, LOCALES } from "../lib/i18n.svelte";
+  import { theme } from "../lib/theme.svelte";
   import type { ShellOption } from "../lib/types";
+  import { open } from "@tauri-apps/plugin-dialog";
 
   let shells = $state<ShellOption[]>([]);
+  let themeError = $state("");
   onMount(async () => {
     try {
       shells = await api.listShells();
@@ -14,6 +17,23 @@
       shells = [];
     }
   });
+
+  /** Importa uma família de temas do Zed e já ativa o primeiro dela. */
+  async function importZedTheme(): Promise<void> {
+    themeError = "";
+    const picked = await open({
+      multiple: false,
+      filters: [{ name: "Zed theme", extensions: ["json"] }],
+    });
+    if (typeof picked !== "string") return;
+    try {
+      const imported = await api.themeImportZed(picked);
+      await theme.refreshCatalog();
+      if (imported.length > 0) await app.setTheme(imported[0].id);
+    } catch (e) {
+      themeError = String(e);
+    }
+  }
 
   const shortcuts = $derived<[string, string][]>([
     ["⌘T", t("shortcuts.newTerminal")],
@@ -49,6 +69,41 @@
         {/each}
       </select>
     </label>
+
+    <div class="row">
+      <div>
+        <div class="t">{t("settings.theme")}</div>
+        <div class="sub">{t("settings.themeHint")}</div>
+      </div>
+      <div class="themepick">
+        <select
+          value={app.settings.theme || "dark-plus"}
+          onchange={(e) => app.setTheme(e.currentTarget.value)}
+        >
+          {#each theme.available as th (th.id)}
+            <option value={th.id}>{th.name}</option>
+          {/each}
+        </select>
+        <button class="tour" onclick={importZedTheme}>{t("settings.themeImport")}</button>
+      </div>
+    </div>
+    {#if themeError}
+      <div class="row err">{themeError}</div>
+    {/if}
+
+    <div class="row">
+      <div>
+        <div class="t">{t("settings.harness")}</div>
+        <div class="sub">{t("settings.harnessHint")}</div>
+      </div>
+      <button
+        class="tour"
+        onclick={() => {
+          app.settingsOpen = false;
+          app.harnessOpen = true;
+        }}>{t("settings.harnessBtn")}</button
+      >
+    </div>
 
     <label class="row">
       <div>
@@ -132,9 +187,9 @@
     width: 440px;
     max-height: 80vh;
     overflow-y: auto;
-    background: #252526;
-    color: #d4d4d4;
-    border: 1px solid #3a3a3a;
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px 20px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -151,13 +206,13 @@
   h3 {
     font-size: 12px;
     text-transform: uppercase;
-    color: #8a8a8a;
+    color: var(--muted);
     margin: 16px 0 8px;
   }
   .close {
     background: none;
     border: none;
-    color: #888;
+    color: var(--muted);
     font-size: 14px;
     cursor: pointer;
   }
@@ -167,14 +222,14 @@
     justify-content: space-between;
     gap: 16px;
     padding: 10px 0;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border);
   }
   .t {
     font-size: 14px;
   }
   .sub {
     font-size: 12px;
-    color: #8a8a8a;
+    color: var(--muted);
     margin-top: 2px;
   }
   .stepper {
@@ -184,18 +239,18 @@
   }
   select {
     max-width: 260px;
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
-    color: #fff;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
     padding: 6px 8px;
     border-radius: 6px;
     font-size: 12px;
     outline: none;
   }
   .tour {
-    background: #3a3d41;
+    background: var(--elevated);
     border: none;
-    color: #ddd;
+    color: var(--fg);
     padding: 6px 14px;
     border-radius: 6px;
     cursor: pointer;
@@ -203,13 +258,13 @@
     white-space: nowrap;
   }
   .tour:hover {
-    background: #4a4d51;
-    color: #fff;
+    background: var(--border);
+    color: var(--fg);
   }
   .stepper button {
-    background: #3a3d41;
+    background: var(--elevated);
     border: none;
-    color: #fff;
+    color: var(--fg);
     width: 24px;
     height: 24px;
     border-radius: 4px;
@@ -224,12 +279,21 @@
   kbd {
     display: inline-block;
     min-width: 60px;
-    background: #1e1e1e;
-    border: 1px solid #444;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 4px;
     padding: 1px 6px;
     font-family: monospace;
     font-size: 12px;
     text-align: center;
+  }
+  .themepick {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .err {
+    color: var(--danger);
+    font-size: 12px;
   }
 </style>

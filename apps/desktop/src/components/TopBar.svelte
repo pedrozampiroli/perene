@@ -30,8 +30,8 @@
     gap: 8px;
     height: 100%;
     padding: 0 10px;
-    background: #1e1e1e;
-    border-bottom: 1px solid #2a2a2a;
+    background: var(--bg);
+    border-bottom: 1px solid var(--elevated);
     /* sem overflow:hidden — senão corta o menu git que abre pra baixo */
   }
   .crumb {
@@ -41,20 +41,20 @@
     min-width: 0;
     overflow: hidden;
     font-size: 12px;
-    color: #b8b8b8;
+    color: var(--muted);
   }
   .ws {
-    color: #9aa0a6;
+    color: var(--muted);
   }
   .sl {
-    color: #5a5a5a;
+    color: var(--border);
   }
   .ic {
     display: flex;
     flex: 0 0 auto;
   }
   .tb {
-    color: #e0e0e0;
+    color: var(--fg);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

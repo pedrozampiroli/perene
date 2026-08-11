@@ -9,6 +9,7 @@
   import TopBar from "./components/TopBar.svelte";
   import BottomBar from "./components/BottomBar.svelte";
   import SettingsModal from "./components/SettingsModal.svelte";
+  import HarnessModal from "./components/HarnessModal.svelte";
   import HistoryModal from "./components/HistoryModal.svelte";
   import UsageModal from "./components/UsageModal.svelte";
   import NameModal from "./components/NameModal.svelte";
@@ -134,6 +135,10 @@
   {#if app.settingsOpen}
     <SettingsModal />
   {/if}
+
+  {#if app.harnessOpen}
+    <HarnessModal />
+  {/if}
   {#if app.historyOpen}
     <HistoryModal />
   {/if}
@@ -170,7 +175,7 @@
     grid-row: 1 / 3;
     grid-column: 2;
     position: relative;
-    background: #2a2a2a;
+    background: var(--elevated);
     cursor: col-resize;
   }
   .vdivider::after {
@@ -183,7 +188,7 @@
   }
   .vdivider:hover,
   .vdivider.dragging {
-    background: #007acc;
+    background: var(--accent);
   }
   .topbar-col {
     grid-row: 1;
@@ -195,7 +200,7 @@
     grid-column: 3;
     min-width: 0;
     min-height: 0;
-    background: #1e1e1e;
+    background: var(--bg);
   }
   .bottom {
     grid-row: 3;
@@ -206,6 +211,6 @@
     align-items: center;
     justify-content: center;
     height: 100vh;
-    color: #6a6a6a;
+    color: var(--muted);
   }
 </style>

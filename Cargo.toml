@@ -29,6 +29,7 @@ parking_lot = "0.12"
 uuid = { version = "1", features = ["v4"] }
 portable-pty = "0.8"
 base64 = "0.22"
+toml = { version = "1", features = ["preserve_order"] }
 
 perene-protocol = { path = "crates/perene-protocol" }
 perene-core = { path = "crates/perene-core" }

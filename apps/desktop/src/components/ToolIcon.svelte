@@ -50,7 +50,9 @@
     fill: currentColor !important;
     stroke: none;
   }
-  /* Máscaras/clip do opencode precisam continuar brancas pra não sumir o desenho. */
+  /* Máscaras/clip do opencode precisam continuar brancas pra não sumir o desenho.
+     Aqui branco NÃO é cor de tema: em <mask>, branco = "esta parte aparece".
+     Trocar por var(--fg) apagaria o ícone inteiro num tema claro. */
   .icon :global(svg mask path),
   .icon :global(svg clipPath rect),
   .icon :global(svg defs *) {

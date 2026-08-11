@@ -5,11 +5,16 @@ import type {
   Commit,
   DirEntry,
   GitStatus,
+  HarnessId,
+  HarnessInfo,
   Manifest,
+  McpServer,
   SessionRecord,
   SearchHit,
   Settings,
   ShellOption,
+  Skill,
+  Theme,
   UsageStats,
   Worktree,
 } from "./types";
@@ -54,6 +59,28 @@ export const api = {
   gitLog: (root: string, limit = 50) => invoke<Commit[]>("git_log", { root, limit }),
   gitShow: (root: string, hash: string) => invoke<string>("git_show", { root, hash }),
   gitCommit: (root: string, message: string) => invoke<string>("git_commit", { root, message }),
+  // Temas
+  themesList: () => invoke<Theme[]>("themes_list"),
+  themeActive: (id: string) => invoke<Theme>("theme_active", { id }),
+  themeImportZed: (path: string) => invoke<Theme[]>("theme_import_zed", { path }),
+  themeRemove: (id: string) => invoke<void>("theme_remove", { id }),
+
+  // MCP e skills dos harnesses
+  harnessList: () => invoke<HarnessInfo[]>("harness_list"),
+  mcpUpsert: (harness: HarnessId, server: McpServer) =>
+    invoke<void>("mcp_upsert", { harness, server }),
+  mcpRemove: (harness: HarnessId, name: string) =>
+    invoke<void>("mcp_remove", { harness, name }),
+  mcpSetEnabled: (harness: HarnessId, name: string, enabled: boolean) =>
+    invoke<void>("mcp_set_enabled", { harness, name, enabled }),
+  mcpCopyTo: (from: HarnessId, to: HarnessId, name: string) =>
+    invoke<void>("mcp_copy_to", { from, to, name }),
+  skillsList: (project?: string) => invoke<Skill[]>("skills_list", { project }),
+  skillInstall: (source: string, project?: string) =>
+    invoke<Skill>("skill_install", { source, project }),
+  skillRemove: (path: string, project?: string) =>
+    invoke<void>("skill_remove", { path, project }),
+
   gitWorktreeList: (root: string) => invoke<Worktree[]>("git_worktree_list", { root }),
   gitWorktreeAdd: (root: string, path: string, branch: string, create: boolean) =>
     invoke<string>("git_worktree_add", { root, path, branch, create }),
