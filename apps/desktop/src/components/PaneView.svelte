@@ -173,8 +173,8 @@
     flex: 0 0 auto;
     font-size: 9px;
     letter-spacing: 0.05em;
-    color: #8a9bb0;
-    border: 1px solid #3a4552;
+    color: var(--muted);
+    border: 1px solid var(--border);
     border-radius: 3px;
     padding: 0 4px;
     line-height: 13px;

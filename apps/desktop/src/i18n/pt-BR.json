@@ -114,6 +114,8 @@
   "acp.thinking": "Raciocínio",
   "acp.mode": "Modo de permissão",
   "acp.model": "Modelo",
+  "acp.modelCustom": "Outro modelo…",
+  "acp.modelCustomPlaceholder": "alias (ex.: fable) ↵",
   "acp.fork": "Fork",
   "acp.forkHint": "Bifurcar esta conversa numa aba nova",
   "acp.contextUsed": "Contexto usado",

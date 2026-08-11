@@ -205,6 +205,19 @@ function readModels(models: AcpModels | null | undefined) {
   };
 }
 
+/**
+ * Rótulo do modelo com a **versão** visível.
+ *
+ * O `name` que o agente manda é genérico ("Sonnet", "Default (recommended)") e
+ * não diz qual versão vai rodar; a versão está no começo da descrição
+ * ("Sonnet 4.6 · Best for everyday tasks"). Mostramos esse primeiro trecho e
+ * deixamos a frase inteira no tooltip.
+ */
+export function modelLabel(opt: AcpOption): string {
+  const primeiro = (opt.description ?? "").split("·")[0].trim();
+  return primeiro || opt.name || opt.id;
+}
+
 /** Aplica um evento do daemon à conversa. Muta (o `$state` é reativo em profundidade). */
 export function applyAcpEvent(conv: AcpConversation, event: AcpEvent): void {
   switch (event.kind) {
@@ -379,7 +392,16 @@ class AcpStore {
 
   setModel(paneId: string, modelId: string): void {
     const conv = this.conversations[paneId];
-    if (conv) conv.models.current = modelId;
+    if (!conv) return;
+    // O agente aceita alias que não anuncia (`fable`, por exemplo): se o usuário
+    // digitou um, ele entra na lista para poder ser reescolhido depois.
+    if (modelId && !conv.models.available.some((m) => m.id === modelId)) {
+      conv.models.available = [
+        ...conv.models.available,
+        { id: modelId, name: modelId, description: null },
+      ];
+    }
+    conv.models.current = modelId;
   }
 
   forget(paneId: string): void {

@@ -48,7 +48,7 @@
 
 <style>
   .diff {
-    background: #171717;
+    background: color-mix(in srgb, var(--fg) 4%, var(--bg));
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11px;
     line-height: 1.5;
@@ -58,9 +58,9 @@
     align-items: center;
     gap: 5px;
     padding: 4px 9px;
-    color: #9aa0a6;
-    background: #1d1d1d;
-    border-bottom: 1px solid #2c2c2c;
+    color: var(--muted);
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
   }
   .path {
     overflow: hidden;
@@ -74,10 +74,10 @@
     flex: 0 0 auto;
   }
   .plus {
-    color: #7fb98a;
+    color: var(--success);
   }
   .minus {
-    color: #e08b8b;
+    color: var(--danger);
   }
   .body {
     max-height: 300px;
@@ -93,33 +93,33 @@
     flex: 0 0 auto;
     width: 16px;
     text-align: center;
-    color: #6a6a6a;
+    color: var(--muted);
     user-select: none;
   }
   .txt {
     flex: 1 1 auto;
   }
   .row.keep {
-    color: #8a8a8a;
+    color: var(--muted);
   }
   .row.add {
-    background: #172a1c;
-    color: #a8d8b0;
+    background: color-mix(in srgb, var(--success) 14%, var(--bg));
+    color: var(--success);
   }
   .row.add .sign {
-    color: #7fb98a;
+    color: var(--success);
   }
   .row.del {
-    background: #2a1a1a;
-    color: #e0aaaa;
+    background: color-mix(in srgb, var(--danger) 14%, var(--bg));
+    color: var(--danger);
   }
   .row.del .sign {
-    color: #e08b8b;
+    color: var(--danger);
   }
   .row.gap {
-    color: #5a5a5a;
+    color: var(--muted);
     font-style: italic;
     padding-left: 16px;
-    background: #1a1a1a;
+    background: color-mix(in srgb, var(--fg) 3%, var(--bg));
   }
 </style>

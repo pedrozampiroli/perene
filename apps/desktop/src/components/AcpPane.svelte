@@ -8,7 +8,7 @@
 
   import { onMount, tick } from "svelte";
   import { ArrowUp, AtSign, Brain, Check, ChevronRight, GitFork, Square, X } from "@lucide/svelte";
-  import { acp } from "../lib/acp.svelte";
+  import { acp, modelLabel } from "../lib/acp.svelte";
   import { api } from "../lib/api";
   import { app } from "../lib/store.svelte";
   import { t } from "../lib/i18n.svelte";
@@ -231,6 +231,32 @@
     void api.acpSetMode(paneId, id).catch(() => {});
   }
 
+  /** Valor sentinela da opção "outro modelo…" no seletor. */
+  const CUSTOM = "__perene_custom__";
+  let modeloCustom = $state(false);
+  let caixaModelo = $state<HTMLInputElement | undefined>();
+
+  function escolherModelo(id: string) {
+    if (id === CUSTOM) {
+      modeloCustom = true;
+      void tick().then(() => caixaModelo?.focus());
+      return;
+    }
+    trocarModelo(id);
+  }
+
+  function onKeyModelo(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      modeloCustom = false;
+      return;
+    }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const alias = (e.currentTarget as HTMLInputElement).value.trim();
+    modeloCustom = false;
+    if (alias) trocarModelo(alias);
+  }
+
   function trocarModelo(id: string) {
     acp.setModel(paneId, id);
     void api.acpSetModel(paneId, id).catch(() => {});
@@ -260,16 +286,28 @@
         </select>
       {/if}
       {#if conv.models.available.length > 0}
-        <select
-          class="sel"
-          title={t("acp.model")}
-          value={conv.models.current}
-          onchange={(e) => trocarModelo(e.currentTarget.value)}
-        >
-          {#each conv.models.available as m (m.id)}
-            <option value={m.id}>{m.name}</option>
-          {/each}
-        </select>
+        {#if modeloCustom}
+          <!-- O agente aceita alias que não anuncia (ex.: `fable`). -->
+          <input
+            class="sel custom"
+            bind:this={caixaModelo}
+            placeholder={t("acp.modelCustomPlaceholder")}
+            onkeydown={onKeyModelo}
+            onblur={() => (modeloCustom = false)}
+          />
+        {:else}
+          <select
+            class="sel"
+            title={t("acp.model")}
+            value={conv.models.current}
+            onchange={(e) => escolherModelo(e.currentTarget.value)}
+          >
+            {#each conv.models.available as m (m.id)}
+              <option value={m.id} title={m.description ?? ""}>{modelLabel(m)}</option>
+            {/each}
+            <option value={CUSTOM}>{t("acp.modelCustom")}</option>
+          </select>
+        {/if}
       {/if}
       <button
         class="fork"
@@ -429,8 +467,8 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    background: #1e1e1e;
-    color: #d4d4d4;
+    background: var(--bg);
+    color: var(--fg);
     font-size: 12.5px;
     line-height: 1.55;
   }
@@ -439,14 +477,14 @@
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid var(--elevated);
     flex: 0 0 auto;
   }
   .sel {
-    background: #252526;
-    border: 1px solid #3a3d41;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 4px;
-    color: #cccccc;
+    color: var(--fg);
     font: inherit;
     font-size: 10.5px;
     padding: 1px 4px;
@@ -454,36 +492,36 @@
   }
   .sel:focus {
     outline: none;
-    border-color: #4a7fb5;
+    border-color: var(--accent);
   }
   .fork {
     display: flex;
     align-items: center;
     gap: 4px;
-    background: #252526;
-    border: 1px solid #3a3d41;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 4px;
-    color: #cccccc;
+    color: var(--fg);
     font: inherit;
     font-size: 10.5px;
     padding: 1px 6px;
     cursor: pointer;
   }
   .fork:hover:not(:disabled) {
-    background: #3a3d41;
+    background: var(--border);
   }
   .fork:disabled {
-    color: #5a5a5a;
+    color: var(--muted);
     cursor: default;
   }
   .uso {
     margin-left: auto;
     font-size: 10px;
-    color: #6a6a6a;
+    color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
   .uso.alto {
-    color: #d9b45f;
+    color: var(--warning);
   }
   .log {
     flex: 1 1 auto;
@@ -496,7 +534,7 @@
     gap: 10px;
   }
   .hint {
-    color: #6a6a6a;
+    color: var(--muted);
     font-style: italic;
   }
   .msg .who {
@@ -504,12 +542,12 @@
     font-size: 10px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #6a6a6a;
+    color: var(--muted);
     margin-bottom: 2px;
   }
   .msg.user .md {
-    color: #cfd6dd;
-    border-left: 2px solid #3a3d41;
+    color: var(--fg);
+    border-left: 2px solid var(--border);
     padding-left: 8px;
   }
 
@@ -526,7 +564,7 @@
   .md :global(h4) {
     margin: 12px 0 6px;
     font-size: 13px;
-    color: #e8e8e8;
+    color: var(--fg);
   }
   .md :global(ul),
   .md :global(ol) {
@@ -537,15 +575,15 @@
     margin: 2px 0;
   }
   .md :global(code) {
-    background: #2a2a2a;
+    background: var(--elevated);
     border-radius: 3px;
     padding: 1px 4px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11.5px;
   }
   .md :global(pre) {
-    background: #171717;
-    border: 1px solid #2c2c2c;
+    background: color-mix(in srgb, var(--fg) 4%, var(--bg));
+    border: 1px solid var(--border);
     border-radius: 5px;
     padding: 8px 10px;
     overflow-x: auto;
@@ -560,11 +598,11 @@
   .md :global(blockquote) {
     margin: 0 0 8px;
     padding-left: 8px;
-    border-left: 2px solid #3a3d41;
-    color: #9aa0a6;
+    border-left: 2px solid var(--border);
+    color: var(--muted);
   }
   .md :global(a) {
-    color: #6ea8fe;
+    color: var(--accent);
   }
   .md :global(table) {
     border-collapse: collapse;
@@ -573,24 +611,24 @@
   }
   .md :global(th),
   .md :global(td) {
-    border: 1px solid #2c2c2c;
+    border: 1px solid var(--border);
     padding: 3px 7px;
     text-align: left;
   }
   .md :global(th) {
-    background: #252526;
+    background: var(--panel);
   }
   .md :global(img) {
     max-width: 100%;
     max-height: 320px;
     border-radius: 5px;
-    border: 1px solid #2c2c2c;
+    border: 1px solid var(--border);
     display: block;
     margin: 6px 0;
   }
   .md :global(hr) {
     border: none;
-    border-top: 1px solid #2c2c2c;
+    border-top: 1px solid var(--border);
     margin: 10px 0;
   }
 
@@ -601,14 +639,14 @@
     gap: 5px;
     background: none;
     border: none;
-    color: #6a6a6a;
+    color: var(--muted);
     font: inherit;
     font-size: 11px;
     padding: 0;
     cursor: pointer;
   }
   .thead:hover {
-    color: #9aa0a6;
+    color: var(--muted);
   }
   .chev {
     display: flex;
@@ -618,10 +656,10 @@
     transform: rotate(90deg);
   }
   .tbody {
-    color: #7b7b7b;
+    color: var(--muted);
     font-style: italic;
     white-space: pre-wrap;
-    border-left: 2px solid #2f2f2f;
+    border-left: 2px solid var(--elevated);
     padding-left: 8px;
     margin-top: 4px;
   }
@@ -629,35 +667,35 @@
   .plan {
     margin: 0;
     padding-left: 18px;
-    color: #9aa0a6;
+    color: var(--muted);
     font-size: 11.5px;
   }
   .plan li.done {
-    color: #6a6a6a;
+    color: var(--muted);
     text-decoration: line-through;
   }
   .notice {
-    color: #9aa0a6;
+    color: var(--muted);
     font-size: 11.5px;
   }
   /* Falha de adapter vem com o stderr junto: várias linhas, e é justamente
      isso que diz o motivo. Preserva as quebras, mas sem tomar a tela. */
   .notice.err {
-    color: #e08b8b;
+    color: var(--danger);
     white-space: pre-wrap;
     word-break: break-word;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11px;
     max-height: 220px;
     overflow-y: auto;
-    background: #2a1e1e;
-    border: 1px solid #3f2e2e;
+    background: color-mix(in srgb, var(--danger) 10%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
     border-radius: 5px;
     padding: 6px 8px;
   }
   .perm {
-    border: 1px solid #4a3f22;
-    background: #2a2418;
+    border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+    background: color-mix(in srgb, var(--warning) 12%, var(--bg));
     border-radius: 6px;
     padding: 8px 10px;
   }
@@ -665,11 +703,11 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #d9b45f;
+    color: var(--warning);
     margin-bottom: 3px;
   }
   .perm-what {
-    color: #e3e3e3;
+    color: var(--fg);
     word-break: break-word;
     margin-bottom: 8px;
   }
@@ -682,31 +720,31 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    background: #2f2f2f;
-    border: 1px solid #3a3d41;
-    color: #cccccc;
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    color: var(--fg);
     border-radius: 4px;
     padding: 4px 10px;
     font-size: 11.5px;
     cursor: pointer;
   }
   .opt:hover {
-    background: #3a3d41;
+    background: var(--border);
   }
   .opt.primary {
-    background: #2f4630;
-    border-color: #3d5c3f;
-    color: #cfe8d1;
+    background: color-mix(in srgb, var(--success) 22%, var(--bg));
+    border-color: color-mix(in srgb, var(--success) 45%, transparent);
+    color: var(--success);
   }
   .opt.primary:hover {
-    background: #3a5a3c;
+    background: color-mix(in srgb, var(--success) 32%, var(--bg));
   }
 
   /* ── Composer ─────────────────────────────────────────────────────────── */
   .composer-wrap {
     position: relative;
     flex: 0 0 auto;
-    border-top: 1px solid #2a2a2a;
+    border-top: 1px solid var(--elevated);
   }
   .sugs {
     position: absolute;
@@ -715,8 +753,8 @@
     right: 12px;
     max-height: 240px;
     overflow-y: auto;
-    background: #252526;
-    border: 1px solid #3a3d41;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 6px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     margin-bottom: 6px;
@@ -733,25 +771,25 @@
     text-align: left;
     background: none;
     border: none;
-    color: #cccccc;
+    color: var(--fg);
     padding: 4px 10px;
     font: inherit;
     font-size: 11.5px;
     cursor: pointer;
   }
   .sug.sel {
-    background: #094771;
+    background: var(--selection);
   }
   .srot {
-    color: #6ea8fe;
+    color: var(--accent);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     flex: 0 0 auto;
   }
   .sug.sel .srot {
-    color: #cfe3ff;
+    color: var(--accent-fg);
   }
   .sdet {
-    color: #8a8a8a;
+    color: var(--muted);
     font-size: 10.5px;
     line-height: 1.35;
     /* Duas linhas no máximo: a descrição situa, não substitui a documentação. */
@@ -764,7 +802,7 @@
     word-break: break-word;
   }
   .sug.sel .sdet {
-    color: #cfd6dd;
+    color: var(--fg);
   }
   .anexos {
     display: flex;
@@ -777,10 +815,10 @@
     display: inline-flex;
     align-items: center;
     gap: 3px;
-    background: #252d38;
-    border: 1px solid #35455a;
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
     border-radius: 3px;
-    color: #a9c6ea;
+    color: var(--accent);
     font-size: 10.5px;
     padding: 1px 4px 1px 5px;
   }
@@ -788,12 +826,12 @@
     display: flex;
     background: none;
     border: none;
-    color: #6a8199;
+    color: var(--muted);
     cursor: pointer;
     padding: 0 0 0 2px;
   }
   .rmchip:hover {
-    color: #e08b8b;
+    color: var(--danger);
   }
   .anexo {
     position: relative;
@@ -804,7 +842,7 @@
     max-width: 96px;
     object-fit: cover;
     border-radius: 4px;
-    border: 1px solid #3a3d41;
+    border: 1px solid var(--border);
     display: block;
   }
   .rm {
@@ -816,15 +854,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #3a3d41;
-    border: 1px solid #1e1e1e;
+    background: var(--border);
+    border: 1px solid var(--bg);
     border-radius: 50%;
-    color: #ddd;
+    color: var(--fg);
     cursor: pointer;
     padding: 0;
   }
   .rm:hover {
-    background: #6b4a4a;
+    background: color-mix(in srgb, var(--danger) 30%, var(--bg));
   }
   .composer {
     display: flex;
@@ -837,10 +875,10 @@
     resize: none;
     max-height: 140px;
     min-height: 26px;
-    background: #252526;
-    border: 1px solid #3a3d41;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 5px;
-    color: #d4d4d4;
+    color: var(--fg);
     padding: 5px 8px;
     font: inherit;
     font-family: inherit;
@@ -849,10 +887,10 @@
   }
   textarea:focus {
     outline: none;
-    border-color: #4a7fb5;
+    border-color: var(--accent);
   }
   textarea:disabled {
-    color: #6a6a6a;
+    color: var(--muted);
   }
   .go {
     display: flex;
@@ -861,25 +899,25 @@
     width: 26px;
     height: 26px;
     flex: 0 0 auto;
-    background: #4a7fb5;
+    background: var(--accent);
     border: none;
     border-radius: 5px;
-    color: #fff;
+    color: var(--accent-fg);
     cursor: pointer;
   }
   .go:disabled {
-    background: #2f2f2f;
-    color: #6a6a6a;
+    background: var(--elevated);
+    color: var(--muted);
     cursor: default;
   }
   .go.stop {
-    background: #6b4a4a;
+    background: color-mix(in srgb, var(--danger) 30%, var(--bg));
   }
   .foot {
     flex: 0 0 auto;
     padding: 0 12px 6px;
     font-size: 10px;
-    color: #5a5a5a;
+    color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

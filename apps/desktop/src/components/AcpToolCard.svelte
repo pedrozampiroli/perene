@@ -98,16 +98,16 @@
 
 <style>
   .card {
-    background: #232323;
-    border: 1px solid #2c2c2c;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 5px;
     overflow: hidden;
   }
   .card.done {
-    border-color: #2f3b32;
+    border-color: color-mix(in srgb, var(--success) 30%, transparent);
   }
   .card.failed {
-    border-color: #3f2e2e;
+    border-color: color-mix(in srgb, var(--danger) 30%, transparent);
   }
   .head {
     display: flex;
@@ -116,7 +116,7 @@
     width: 100%;
     background: none;
     border: none;
-    color: #9aa0a6;
+    color: var(--muted);
     font: inherit;
     font-size: 11.5px;
     padding: 5px 8px;
@@ -127,19 +127,19 @@
     cursor: pointer;
   }
   .head.clickable:hover {
-    background: #2a2a2a;
+    background: var(--elevated);
   }
   .card.done .head {
-    color: #7fb98a;
+    color: var(--success);
   }
   .card.failed .head {
-    color: #e08b8b;
+    color: var(--danger);
   }
   .chev {
     display: flex;
     flex: 0 0 auto;
     transition: transform 0.12s ease;
-    color: #6a6a6a;
+    color: var(--muted);
   }
   .chev.open {
     transform: rotate(90deg);
@@ -186,21 +186,21 @@
     padding: 0 8px 5px 25px;
   }
   .loc {
-    background: #2a2a2a;
-    border: 1px solid #333;
+    background: var(--elevated);
+    border: 1px solid var(--border);
     border-radius: 3px;
-    color: #8fb6e8;
+    color: var(--accent);
     font-size: 10.5px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     padding: 1px 5px;
     cursor: pointer;
   }
   .loc:hover {
-    background: #333;
-    color: #b9d4f5;
+    background: color-mix(in srgb, var(--accent) 18%, var(--elevated));
+    color: var(--fg);
   }
   .body {
-    border-top: 1px solid #2c2c2c;
+    border-top: 1px solid var(--border);
   }
   .txt,
   .out {
@@ -209,18 +209,18 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11px;
     line-height: 1.5;
-    color: #c8c8c8;
+    color: var(--fg);
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 260px;
     overflow: auto;
   }
   .out {
-    background: #171717;
-    color: #b8b8b8;
+    background: color-mix(in srgb, var(--fg) 4%, var(--bg));
+    color: var(--muted);
   }
   .out.dim {
-    color: #6a6a6a;
+    color: var(--muted);
     font-style: italic;
   }
   .outfoot {
@@ -228,11 +228,11 @@
     gap: 8px;
     padding: 0 9px 5px;
     font-size: 10px;
-    color: #6a6a6a;
-    background: #171717;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--fg) 4%, var(--bg));
   }
   .exit.bad {
-    color: #e08b8b;
+    color: var(--danger);
   }
   .trunc {
     font-style: italic;
