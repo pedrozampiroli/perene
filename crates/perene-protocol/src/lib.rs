@@ -52,6 +52,10 @@ pub struct TerminalExit {
 pub mod events {
     pub const PTY_OUTPUT: &str = "pty-output";
     pub const PTY_EXIT: &str = "pty-exit";
+    /// Fim do replay de scrollback de um pane — depois disso, output é ao vivo.
+    /// A UI usa isto pra não disparar notificação de "idle" por causa de um bell
+    /// antigo que estava só no histórico (scrollback replay ≠ evento novo).
+    pub const PTY_ATTACH_DONE: &str = "pty-attach-done";
     pub const PTY_STATUS: &str = "pty-status";
     pub const ACP_EVENT: &str = "acp-event";
 }

@@ -132,9 +132,9 @@
     max-height: 86vh;
     display: flex;
     flex-direction: column;
-    background: #252526;
-    color: #d4d4d4;
-    border: 1px solid #3a3a3a;
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
     border-radius: 8px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   }
@@ -143,13 +143,13 @@
     gap: 8px;
     align-items: center;
     padding: 10px 12px;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border);
   }
   .search {
     flex: 1 1 auto;
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
-    color: #fff;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
     padding: 6px 10px;
     border-radius: 6px;
     outline: none;
@@ -157,27 +157,27 @@
   .seg {
     display: flex;
     gap: 2px;
-    background: #1e1e1e;
+    background: var(--bg);
     border-radius: 6px;
     padding: 2px;
   }
   .seg button {
     background: none;
     border: none;
-    color: #b8b8b8;
+    color: var(--muted);
     padding: 4px 10px;
     border-radius: 4px;
     cursor: pointer;
     font-size: 12px;
   }
   .seg button.active {
-    background: #37373d;
-    color: #fff;
+    background: var(--elevated);
+    color: var(--fg);
   }
   .close {
     background: none;
     border: none;
-    color: #888;
+    color: var(--muted);
     cursor: pointer;
     font-size: 14px;
   }
@@ -189,7 +189,7 @@
   }
   .list {
     overflow-y: auto;
-    border-right: 1px solid #333;
+    border-right: 1px solid var(--border);
     padding: 6px;
   }
   .row {
@@ -201,10 +201,10 @@
     cursor: pointer;
   }
   .row:hover {
-    background: #2a2d2e;
+    background: var(--elevated);
   }
   .row.sel {
-    background: #37373d;
+    background: var(--elevated);
   }
   .dot {
     width: 9px;
@@ -224,7 +224,7 @@
   }
   .sub {
     font-size: 11px;
-    color: #8a8a8a;
+    color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -237,7 +237,7 @@
   }
   .phead {
     font-size: 12px;
-    color: #9aa0a6;
+    color: var(--muted);
     margin-bottom: 8px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -249,20 +249,20 @@
     margin: 0;
     font-size: 11px;
     white-space: pre-wrap;
-    color: #cfcfcf;
+    color: var(--fg);
   }
   .resume {
     margin-top: 8px;
     align-self: flex-end;
-    background: #0e639c;
-    color: #fff;
+    background: var(--accent);
+    color: var(--accent-fg);
     border: none;
     padding: 7px 14px;
     border-radius: 6px;
     cursor: pointer;
   }
   .muted {
-    color: #7a7a7a;
+    color: var(--muted);
     padding: 12px;
     font-size: 13px;
   }
@@ -275,7 +275,7 @@
   .status {
     padding: 6px 12px;
     font-size: 11px;
-    color: #7a7a7a;
-    border-top: 1px solid #333;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
   }
 </style>

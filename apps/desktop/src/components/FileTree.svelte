@@ -41,9 +41,9 @@
   function color(path: string): string {
     const st = statusMap[path];
     if (!st) return "";
-    if (st.includes("?") || st.includes("A")) return "#4ec9b0"; // novo
-    if (st.includes("M")) return "#e2c08d"; // modificado
-    if (st.includes("D")) return "#f14c4c"; // removido
+    if (st.includes("?") || st.includes("A")) return "var(--success)"; // novo
+    if (st.includes("M")) return "var(--warning)"; // modificado
+    if (st.includes("D")) return "var(--danger)"; // removido
     return "";
   }
 </script>
@@ -85,25 +85,25 @@
     font-size: 12.5px;
     cursor: pointer;
     white-space: nowrap;
-    color: #cccccc;
+    color: var(--fg);
   }
   .node:hover {
-    background: #2a2d2e;
+    background: var(--elevated);
   }
   .node.sel {
-    background: #37373d;
+    background: var(--elevated);
   }
   .caret {
     display: flex;
     align-items: center;
     width: 13px;
-    color: #8a8a8a;
+    color: var(--muted);
     flex: 0 0 auto;
   }
   .ficon {
     display: flex;
     align-items: center;
-    color: #8a99b8;
+    color: var(--muted);
     flex: 0 0 auto;
   }
   .name {

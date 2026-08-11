@@ -22,33 +22,10 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api } from "./api";
 import { t } from "./i18n.svelte";
-import { PTY_OUTPUT, PTY_EXIT } from "./events";
+import { PTY_OUTPUT, PTY_EXIT, PTY_ATTACH_DONE } from "./events";
+import { theme, xtermTheme } from "./theme.svelte";
 
 const isMac = navigator.userAgent.toLowerCase().includes("mac");
-
-const DARK_PLUS = {
-  background: "#1e1e1e",
-  foreground: "#d4d4d4",
-  cursor: "#d4d4d4",
-  cursorAccent: "#1e1e1e",
-  selectionBackground: "#264f78",
-  black: "#000000",
-  red: "#cd3131",
-  green: "#0dbc79",
-  yellow: "#e5e510",
-  blue: "#2472c8",
-  magenta: "#bc3fbc",
-  cyan: "#11a8cd",
-  white: "#e5e5e5",
-  brightBlack: "#666666",
-  brightRed: "#f14c4c",
-  brightGreen: "#23d18b",
-  brightYellow: "#f5f543",
-  brightBlue: "#3b8eea",
-  brightMagenta: "#d670d6",
-  brightCyan: "#29b8db",
-  brightWhite: "#ffffff",
-};
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -86,6 +63,10 @@ export interface PaneOptions {
   fontSize?: number;
   webgl?: boolean;
   shell?: string | null;
+  /** BEL (`\x07`) recebido do PTY — claude/codex/opencode tocam isso quando
+   *  terminam ou esperam input (ver `cli_notify.rs`, que liga o bell nas 3
+   *  CLIs). Dispara a notificação de idle. */
+  onBell?: () => void;
 }
 
 export class PerenePane {
@@ -98,9 +79,23 @@ export class PerenePane {
   private disposed = false;
   /** Já reportamos falha neste pane? Evita repetir o aviso a cada tecla. */
   private broken = false;
+  /** Ainda no replay do scrollback (attach)? Um bell aí é histórico, não um
+   *  evento novo — vira notificação só depois do `PTY_ATTACH_DONE`. */
+  private replaying = true;
+
+  /** Panes vivos, pra trocar o tema sem precisar reabrir os terminais.
+   *  Set (não array) porque dispose pode vir fora de ordem. */
+  private static live = new Set<PerenePane>();
+
+  /** Repinta todos os terminais abertos com o tema atual. */
+  static repaintAll(): void {
+    const palette = xtermTheme(theme.current);
+    for (const pane of PerenePane.live) pane.term.options.theme = palette;
+  }
 
   constructor(paneId: string, fontSize = 13) {
     this.paneId = paneId;
+    PerenePane.live.add(this);
     this.term = new Terminal({
       fontFamily: "Menlo, Monaco, 'DejaVu Sans Mono', 'Courier New', monospace",
       fontSize,
@@ -109,7 +104,7 @@ export class PerenePane {
       scrollback: 10_000,
       allowProposedApi: true,
       macOptionIsMeta: false,
-      theme: DARK_PLUS,
+      theme: xtermTheme(theme.current),
     });
   }
 
@@ -135,6 +130,11 @@ export class PerenePane {
     container.addEventListener("paste", this.onPaste, true);
 
     this.term.onData((data) => this.send(data));
+    if (opts.onBell) {
+      this.term.onBell(() => {
+        if (!this.replaying) opts.onBell!();
+      });
+    }
 
     this.unlisteners.push(
       await listen<{ paneId: string; dataB64: string }>(PTY_OUTPUT, (e) => {
@@ -146,6 +146,12 @@ export class PerenePane {
       await listen<{ paneId: string; code: number | null }>(PTY_EXIT, (e) => {
         if (e.payload.paneId !== this.paneId) return;
         this.term.writeln(`\r\n\x1b[90m${t("terminal.processEnded")}\x1b[0m`);
+      }),
+    );
+    this.unlisteners.push(
+      await listen<{ paneId: string }>(PTY_ATTACH_DONE, (e) => {
+        if (e.payload.paneId !== this.paneId) return;
+        this.replaying = false;
       }),
     );
 
@@ -267,5 +273,6 @@ export class PerenePane {
     for (const un of this.unlisteners) un();
     this.unlisteners = [];
     this.term.dispose();
+    PerenePane.live.delete(this);
   }
 }

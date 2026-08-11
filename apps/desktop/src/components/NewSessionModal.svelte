@@ -110,9 +110,9 @@
   .modal {
     width: 440px;
     max-width: 92vw;
-    background: #252526;
-    color: #d4d4d4;
-    border: 1px solid #3a3a3a;
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 18px 20px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -125,14 +125,14 @@
     display: flex;
     gap: 10px;
     padding: 10px;
-    border: 1px solid #333;
+    border: 1px solid var(--border);
     border-radius: 8px;
     margin-bottom: 8px;
     cursor: pointer;
   }
   .opt.sel {
-    border-color: #0e639c;
-    background: #0e639c1a;
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
   .opt input {
     margin-top: 3px;
@@ -145,11 +145,11 @@
   }
   .sub {
     font-size: 11.5px;
-    color: #8a8a8a;
+    color: var(--muted);
     margin-top: 3px;
   }
   code {
-    background: #1e1e1e;
+    background: var(--bg);
     padding: 0 4px;
     border-radius: 3px;
     font-size: 11px;
@@ -164,23 +164,23 @@
   .field span {
     display: block;
     font-size: 11px;
-    color: #8a8a8a;
+    color: var(--muted);
     margin-bottom: 4px;
   }
   select,
   .field input {
     width: 100%;
     box-sizing: border-box;
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
-    color: #fff;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
     padding: 6px 8px;
     border-radius: 6px;
     outline: none;
     font-size: 13px;
   }
   .err {
-    color: #f14c4c;
+    color: var(--danger);
     font-size: 12px;
     margin: 4px 0;
     word-break: break-word;
@@ -190,7 +190,7 @@
     align-items: center;
     gap: 8px;
     font-size: 11.5px;
-    color: #9aa0a6;
+    color: var(--muted);
     margin-top: 12px;
   }
   .actions {
@@ -207,16 +207,16 @@
     font-size: 13px;
   }
   .cancel {
-    background: #3a3d41;
-    color: #ddd;
+    background: var(--elevated);
+    color: var(--fg);
   }
   .ok {
-    background: #0e639c;
-    color: #fff;
+    background: var(--accent);
+    color: var(--accent-fg);
   }
   .ok:disabled {
-    background: #333;
-    color: #777;
+    background: var(--border);
+    color: var(--muted);
     cursor: default;
   }
 </style>

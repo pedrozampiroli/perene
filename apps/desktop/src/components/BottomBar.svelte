@@ -80,8 +80,8 @@
     gap: 6px;
     height: 34px;
     padding: 0 8px;
-    background: #252526;
-    border-top: 1px solid #2a2a2a;
+    background: var(--panel);
+    border-top: 1px solid var(--elevated);
     overflow: hidden;
   }
   .group {
@@ -92,7 +92,7 @@
   .sep {
     width: 1px;
     height: 18px;
-    background: #3a3a3a;
+    background: var(--border);
     margin: 0 2px;
   }
   .tabs {
@@ -108,7 +108,7 @@
     gap: 5px;
     background: none;
     border: none;
-    color: #b8b8b8;
+    color: var(--muted);
     cursor: pointer;
     border-radius: 5px;
     padding: 5px 7px;
@@ -117,14 +117,14 @@
     white-space: nowrap;
   }
   button:hover {
-    background: #37373d;
-    color: #fff;
+    background: var(--elevated);
+    color: var(--fg);
   }
   .prof {
     color: var(--c);
   }
   .prof:hover {
-    background: #37373d;
+    background: var(--elevated);
   }
   .tab {
     max-width: 160px;
@@ -137,7 +137,7 @@
     flex: 0 0 auto;
   }
   .tab.active {
-    background: #37373d;
-    color: #fff;
+    background: var(--elevated);
+    color: var(--fg);
   }
 </style>

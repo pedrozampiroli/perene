@@ -104,6 +104,17 @@ impl PeerHandler for Bridge {
     }
 }
 
+/// Aplica as correções de ambiente compartilhadas ([`perene_core::harness_env`]).
+fn apply_env_fixes(cmd: &mut Command) {
+    use perene_core::harness_env::EnvFix;
+    for fix in perene_core::harness_env::child_env_fixes() {
+        match fix {
+            EnvFix::Remove(key) => cmd.env_remove(key),
+            EnvFix::Set(key, value) => cmd.env(key, value),
+        };
+    }
+}
+
 /// Quantas linhas de stderr do adapter guardamos para explicar uma falha.
 const STDERR_TAIL: usize = 20;
 
@@ -124,11 +135,10 @@ impl Agent {
     /// Sobe o processo do agente e começa a falar JSON-RPC pelo stdio dele.
     pub fn spawn(cfg: &SpawnConfig, handler: Arc<dyn AgentHandler>) -> std::io::Result<Self> {
         let mut cmd = Command::new(&cfg.program);
-        // Sem isto o adapter se acha aninhado numa sessão de harness e recusa
-        // abrir sessão (erro interno no `session/new`). Mesma limpeza dos PTYs.
-        for key in perene_core::harness_env::inherited_session_vars() {
-            cmd.env_remove(&key);
-        }
+        // Mesma limpeza dos PTYs: sessão de harness herdada faz o adapter se
+        // achar aninhado e recusar `session/new`; a poluição do AppImage mata
+        // qualquer python que ele venha a rodar.
+        apply_env_fixes(&mut cmd);
         // Grupo de processos próprio: o adapter roda via `npx`, que vira `node`.
         // Sem o grupo, matar o filho direto deixaria o neto vivo — ver [`kill_tree`].
         #[cfg(unix)]

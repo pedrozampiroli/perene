@@ -157,7 +157,7 @@
     max-width: 240px;
     background: none;
     border: none;
-    color: #d4a72c;
+    color: var(--warning);
     cursor: pointer;
     font-size: 12px;
     padding: 3px 8px;
@@ -165,7 +165,7 @@
     overflow: hidden;
   }
   .branch:hover {
-    background: #ffffff12;
+    background: color-mix(in srgb, var(--fg) 7%, transparent);
   }
   .branch :global(svg) {
     flex: 0 0 auto;
@@ -180,11 +180,11 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #e2c08d;
+    background: var(--warning);
     flex: 0 0 auto;
   }
   .ab {
-    color: #9aa0a6;
+    color: var(--muted);
     font-size: 11px;
     flex: 0 0 auto;
   }
@@ -201,8 +201,8 @@
     min-width: 220px;
     max-height: 60vh;
     overflow-y: auto;
-    background: #252526;
-    border: 1px solid #3a3a3a;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 4px;
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
@@ -214,7 +214,7 @@
     width: 100%;
     background: none;
     border: none;
-    color: #cccccc;
+    color: var(--fg);
     cursor: pointer;
     padding: 6px 10px;
     border-radius: 5px;
@@ -222,7 +222,7 @@
     text-align: left;
   }
   .menu > button:hover {
-    background: #2a2d2e;
+    background: var(--elevated);
   }
   .menu > button.row {
     justify-content: space-between;
@@ -240,9 +240,9 @@
   .newb input {
     flex: 1 1 auto;
     min-width: 0;
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
-    color: #fff;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
     border-radius: 5px;
     padding: 5px 8px;
     outline: none;
@@ -251,32 +251,32 @@
   .plus {
     display: flex;
     align-items: center;
-    background: #333;
+    background: var(--border);
     border: none;
-    color: #ccc;
+    color: var(--fg);
     border-radius: 5px;
     padding: 0 8px;
     cursor: pointer;
   }
   .plus:hover {
-    background: #3f3f46;
-    color: #fff;
+    background: var(--border);
+    color: var(--fg);
   }
   .mempty {
     padding: 4px 12px;
     font-size: 11px;
-    color: #7a7a7a;
+    color: var(--muted);
   }
   .sep {
     height: 1px;
-    background: #3a3a3a;
+    background: var(--border);
     margin: 4px 2px;
   }
   .mlabel {
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #7a7a7a;
+    color: var(--muted);
     padding: 4px 10px 2px;
   }
   .blist {
@@ -290,7 +290,7 @@
     width: 100%;
     background: none;
     border: none;
-    color: #cccccc;
+    color: var(--fg);
     cursor: pointer;
     padding: 5px 10px;
     border-radius: 5px;
@@ -298,7 +298,7 @@
     text-align: left;
   }
   .bitem:hover {
-    background: #2a2d2e;
+    background: var(--elevated);
   }
   .bitem .sp {
     width: 13px;
@@ -311,10 +311,10 @@
     z-index: 60;
     max-width: 460px;
     text-align: left;
-    background: #2d2d30;
-    border: 1px solid #3a3a3a;
-    border-left: 3px solid #d4a72c;
-    color: #d4d4d4;
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--warning);
+    color: var(--fg);
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 12px;

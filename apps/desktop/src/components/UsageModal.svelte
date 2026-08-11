@@ -86,9 +86,9 @@
   .modal {
     width: 560px;
     max-width: 92vw;
-    background: #252526;
-    color: #d4d4d4;
-    border: 1px solid #3a3a3a;
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px 20px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -106,7 +106,7 @@
   .close {
     background: none;
     border: none;
-    color: #888;
+    color: var(--muted);
     font-size: 14px;
     cursor: pointer;
   }
@@ -116,8 +116,8 @@
     gap: 10px;
   }
   .card {
-    background: #1e1e1e;
-    border: 1px solid #333;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-top: 2px solid var(--c);
     border-radius: 8px;
     padding: 12px;
@@ -127,7 +127,7 @@
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    color: #b8b8b8;
+    color: var(--muted);
   }
   .ic {
     color: var(--c);
@@ -139,24 +139,24 @@
   }
   .sub {
     font-size: 11px;
-    color: #8a8a8a;
+    color: var(--muted);
   }
   .io {
     display: flex;
     gap: 10px;
     margin-top: 8px;
     font-size: 11px;
-    color: #9aa0a6;
+    color: var(--muted);
   }
   .total {
     margin-top: 14px;
     padding-top: 10px;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--border);
     font-size: 13px;
-    color: #b8b8b8;
+    color: var(--muted);
   }
   .muted {
-    color: #7a7a7a;
+    color: var(--muted);
     padding: 20px 0;
     text-align: center;
   }

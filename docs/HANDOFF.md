@@ -55,7 +55,10 @@ as sessões abertas.
 crates/
   perene-protocol/   tipos IPC (ClientMessage/DaemonMessage) + framing JSON-lines
   perene-core/       models (manifest v3) · store (atômico) · settings · paths
-                     history · usage · sqlite   — Rust puro, sem deps de UI
+                     history · usage · sqlite · theme + themes_store (temas,
+                     import do Zed) · harness (MCP/skills das CLIs)
+                     harness_env (limpeza de ambiente dos filhos)
+                     — Rust puro, sem deps de UI
   perene-acp/        cliente do Agent Client Protocol: jsonrpc (genérico sobre
                      Read/Write) · protocol (tipos do wire) · agent (spawn + API)
   perene-daemon/     session (1 PTY/pane + scrollback) · server (unix socket /
@@ -66,15 +69,18 @@ apps/desktop/
   src-tauri/src/     lib.rs (registra os comandos) · main.rs (--daemon reexec)
                      client.rs (cliente do daemon) · state.rs (manifest/settings/
                      history/usage/paste) · files.rs (fs + git + busca) · shells.rs
+                     appearance.rs (temas) · harness_cmds.rs (MCP/skills)
   src/lib/           store.svelte.ts (estado + ações) · i18n.svelte.ts · api.ts
                      terminal.ts (xterm) · editor.ts (CodeMirror) · profiles.ts
-                     types.ts · paths.ts
+                     languages.ts (76 extensões → linguagem) · theme.svelte.ts
+                     (tokens → CSS vars, xterm e CodeMirror) · types.ts · paths.ts
   src/i18n/          en.json (fonte da verdade) · pt-BR.json · es.json
   src/components/    App · Sidebar · TopBar · BottomBar · TabGrid · SplitContainer
                      PaneView · FilesPane · FileTree · GitWidget · ToolIcon
                      SettingsModal · HistoryModal · UsageModal · NameModal
                      ConfirmModal · NewSessionModal · ContextMenu · SearchPalette
-                     Onboarding · StatusDot · AcpPane
+                     HarnessModal (MCP/skills) · Onboarding · StatusDot
+                     AcpPane · AcpToolCard · AcpDiff
 ```
 
 **A UI é descartável de propósito**: a lógica vive nos crates Rust puros, então
@@ -115,7 +121,9 @@ Estado do app em `~/.perene2/` (`%APPDATA%\perene2\` no Windows):
 | Terminais | 1 PTY/pane no daemon, scrollback, reattach, login shell, shell configurável, dead keys, Shift+Enter (CSI u), paste de imagem |
 | Organização | workspaces → pastas → abas → splits; drag & drop; presets de layout; painéis redimensionáveis (largura persistida) |
 | Sessões | perfis claude/codex/opencode/shell, YOLO, resume pós-reboot, histórico com preview, worktree isolada |
-| Editor | multi-abas (undo/cursor por arquivo), ⌘S, syntax highlight, diff lado a lado, árvore com status git |
+| Editor | multi-abas (undo/cursor por arquivo), ⌘S, syntax highlight em 76 extensões, diff lado a lado, árvore com status git |
+| Temas | 3 embutidos + import de tema do Zed; pinta UI, terminal e editor juntos; troca repinta terminais/editores abertos |
+| Ferramentas | MCP dos 3 harnesses (lê/escreve o formato nativo de cada um, preservando o resto do arquivo); liga/desliga sem perder config; copiar servidor entre ferramentas; skills do Claude |
 | Git | branch/ahead/behind no topo, switch/create branch, fetch/pull/push, PR via `gh`, commits (log + `git show`), worktrees, commit box |
 | Busca | ⌘P quick open (fuzzy), ⌘⇧F busca global (ripgrep), ⌘⇧H substituição global, ⌘F/⌘H no arquivo |
 | Indicador | estado de cada sessão (rodando/esperando aprovação/pronto/erro) inferido do stream do PTY (`status.rs`) ou emitido pela sessão ACP; `StatusDot` na aba e no pane |
@@ -258,6 +266,32 @@ JSON-RPC como em produção, sem rede nem conta de IA. Contra o adapter real:
     *"Invalid permissions.defaultMode: auto."*. É skew de versão entre o adapter
     e o Claude Code do usuário, não bug nosso — mas o modo ACP não sobe enquanto
     a chave estiver no `~/.claude/settings.json`.
+17. **A limpeza de ambiente vale para TODO filho, não só o PTY.** São duas —
+    variáveis de sessão de harness e a poluição do AppImage — e elas moram
+    juntas em `perene_core::harness_env` justamente porque já divergiram: o
+    caminho ACP (adapter + comandos que o agente pede) tinha só a primeira, o
+    que repetiria no Linux o bug do `PYTHONHOME` matando python. Quem spawna
+    aplica `child_env_fixes()` no seu tipo de comando.
+
+### Temas e cores
+
+- **Componente nenhum escreve cor literal.** Tudo é `var(--token)`; os tokens
+  vêm de `theme.svelte.ts`. A exceção proposital é o `fill: #fff` das máscaras
+  SVG do `ToolIcon` — ali branco significa "esta parte aparece", não uma cor de
+  tema: trocar por `var(--fg)` apaga o ícone num tema claro.
+- **Tag nova de sintaxe = cor nova no tema.** Se um parser emitir uma tag que o
+  `HighlightStyle` de `themeExtensions` não cobre, o token sai sem estilo. Já
+  aconteceu com `meta` (o shebang do shell).
+- **Tree-sitter (o do Zed) foi avaliado e recusado**: gramáticas nativas, sem
+  `.wasm` pra webview, e o caminho web pesa 51 MB contra um bundle de 1,4 MB.
+  Só as *cores* do Zed são reaproveitadas.
+
+### Configs dos harnesses
+
+- Os arquivos são **do usuário**, não nossos — `~/.claude.json` guarda
+  onboarding, histórico por projeto e caches. Toda escrita passa por
+  `serde_json::Value`/`toml::Value` e regrava o resto intacto. Nunca serializar
+  uma struct fechada por cima.
 
 ## Limitações conhecidas / próximos passos
 

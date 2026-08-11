@@ -58,9 +58,9 @@
   .modal {
     width: 420px;
     max-width: 92vw;
-    background: #252526;
-    color: #d4d4d4;
-    border: 1px solid #3a3a3a;
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 18px 20px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -76,22 +76,22 @@
   .field span {
     display: block;
     font-size: 11px;
-    color: #8a8a8a;
+    color: var(--muted);
     margin-bottom: 4px;
   }
   input {
     width: 100%;
     box-sizing: border-box;
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
-    color: #fff;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
     padding: 7px 10px;
     border-radius: 6px;
     outline: none;
     font-size: 13px;
   }
   input:focus {
-    border-color: #007acc;
+    border-color: var(--accent);
   }
   .dir {
     display: flex;
@@ -102,17 +102,17 @@
     align-items: center;
     gap: 5px;
     white-space: nowrap;
-    background: #333;
+    background: var(--border);
     border: none;
-    color: #ccc;
+    color: var(--fg);
     padding: 0 10px;
     border-radius: 6px;
     cursor: pointer;
     font-size: 12px;
   }
   .pick:hover {
-    background: #3f3f46;
-    color: #fff;
+    background: var(--border);
+    color: var(--fg);
   }
   .actions {
     display: flex;
@@ -128,17 +128,17 @@
     font-size: 13px;
   }
   .cancel {
-    background: #3a3d41;
-    color: #ddd;
+    background: var(--elevated);
+    color: var(--fg);
   }
   .cancel:hover {
-    background: #4a4d51;
+    background: var(--border);
   }
   .ok {
-    background: #0e639c;
-    color: #fff;
+    background: var(--accent);
+    color: var(--accent-fg);
   }
   .ok:hover {
-    background: #1177bb;
+    background: var(--accent);
   }
 </style>

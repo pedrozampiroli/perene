@@ -155,23 +155,23 @@
   .palette {
     width: 620px;
     max-width: 92vw;
-    background: #252526;
-    border: 1px solid #3a3a3a;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: 0 16px 50px rgba(0, 0, 0, 0.6);
     overflow: hidden;
-    color: #d4d4d4;
+    color: var(--fg);
   }
   .field {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 10px 12px;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border);
   }
   .ic {
     display: flex;
-    color: #8a8a8a;
+    color: var(--muted);
     flex: 0 0 auto;
   }
   input {
@@ -179,23 +179,23 @@
     min-width: 0;
     background: none;
     border: none;
-    color: #fff;
+    color: var(--fg);
     font-size: 14px;
     outline: none;
   }
   .apply {
     flex: 0 0 auto;
-    background: #0e639c;
+    background: var(--accent);
     border: none;
-    color: #fff;
+    color: var(--accent-fg);
     padding: 5px 10px;
     border-radius: 5px;
     cursor: pointer;
     font-size: 12px;
   }
   .apply:disabled {
-    background: #333;
-    color: #777;
+    background: var(--border);
+    color: var(--muted);
     cursor: default;
   }
   .results {
@@ -210,7 +210,7 @@
     width: 100%;
     background: none;
     border: none;
-    color: #cccccc;
+    color: var(--fg);
     text-align: left;
     padding: 5px 9px;
     border-radius: 5px;
@@ -219,8 +219,8 @@
     overflow: hidden;
   }
   .row.sel {
-    background: #04395e;
-    color: #fff;
+    background: var(--selection);
+    color: var(--fg);
   }
   .name {
     flex: 0 0 auto;
@@ -228,7 +228,7 @@
   }
   .path,
   .text {
-    color: #8a8a8a;
+    color: var(--muted);
     font-size: 11.5px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -236,7 +236,7 @@
   }
   .loc {
     flex: 0 0 auto;
-    color: #6ea8fe;
+    color: var(--accent);
     font-size: 11.5px;
     max-width: 45%;
     overflow: hidden;
@@ -247,7 +247,7 @@
     font-family: Menlo, monospace;
   }
   .muted {
-    color: #7a7a7a;
+    color: var(--muted);
     padding: 10px;
     font-size: 12.5px;
   }
@@ -255,8 +255,8 @@
     display: flex;
     justify-content: space-between;
     padding: 6px 12px;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--border);
     font-size: 11px;
-    color: #7a7a7a;
+    color: var(--muted);
   }
 </style>

@@ -2,6 +2,7 @@
   import { t } from "../lib/i18n.svelte";
   import { onMount, onDestroy } from "svelte";
   import { X, Code2 } from "@lucide/svelte";
+  import { isPermissionGranted, sendNotification } from "@tauri-apps/plugin-notification";
   import { PerenePane } from "../lib/terminal";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
@@ -11,10 +12,14 @@
   import ToolIcon from "./ToolIcon.svelte";
   import StatusDot from "./StatusDot.svelte";
 
+  /** Bells em rajada (ex.: vários BEL no mesmo chunk) viram 1 notificação só. */
+  const BELL_DEBOUNCE_MS = 4000;
+
   let { paneId }: { paneId: string } = $props();
 
   let container: HTMLDivElement;
   let pane: PerenePane | undefined;
+  let lastBellAt = 0;
 
   const data = $derived(app.findPane(paneId));
   const isFiles = $derived(data?.kind === "files");
@@ -24,6 +29,25 @@
   const prof = $derived(profile(data?.toolProfileId ?? "shell"));
   const isActive = $derived(app.activePaneId === paneId);
   const dirLabel = $derived(baseName(data?.workingDirectory ?? "") || "~");
+
+  /** claude/codex/opencode tocam o bell quando terminam ou esperam input (bell
+   *  ligado por `cli_notify.rs`). Ignora se a janela já está com foco NESTE
+   *  pane — o usuário já está olhando, notificar seria só ruído. */
+  async function handleBell(): Promise<void> {
+    const now = Date.now();
+    if (now - lastBellAt < BELL_DEBOUNCE_MS) return;
+    lastBellAt = now;
+    if (document.hasFocus() && isActive) return;
+    try {
+      if (!(await isPermissionGranted())) return;
+      sendNotification({
+        title: app.findTabForPane(paneId)?.title || prof.label,
+        body: t("notification.idleBody"),
+      });
+    } catch {
+      // notificação é um extra — nunca pode derrubar o terminal.
+    }
+  }
 
   onMount(() => {
     const p = app.findPane(paneId);
@@ -36,6 +60,7 @@
         fontSize: app.settings.fontSize,
         webgl: app.settings.webgl,
         shell: app.settings.shell || null,
+        onBell: () => void handleBell(),
       })
       .catch(() => {}); // erros de spawn não devem virar unhandledrejection
   });
@@ -52,8 +77,8 @@
 </script>
 
 <div class="pane" class:active={isActive} onpointerdown={focusPane}>
-  <div class="pane-head" style="--accent:{isFiles ? '#6ea8fe' : prof.color}">
-    <span class="hicon" style="color:{isFiles ? '#6ea8fe' : prof.color}">
+  <div class="pane-head" style="--accent:{isFiles ? 'var(--accent)' : prof.color}">
+    <span class="hicon" style="color:{isFiles ? 'var(--accent)' : prof.color}">
       {#if isFiles}<Code2 size={13} />{:else}<ToolIcon id={data?.toolProfileId ?? "shell"} size={13} />{/if}
     </span>
     <span class="label">{isFiles ? t("pane.editor") : prof.label}</span>
@@ -77,13 +102,13 @@
     flex-direction: column;
     height: 100%;
     width: 100%;
-    background: #1e1e1e;
+    background: var(--bg);
     border: 1px solid transparent;
     box-sizing: border-box;
     overflow: hidden;
   }
   .pane.active {
-    border-color: #3a3d41;
+    border-color: var(--elevated);
   }
   .pane-head {
     display: flex;
@@ -92,9 +117,9 @@
     height: 22px;
     padding: 0 8px;
     font-size: 11px;
-    color: #9aa0a6;
-    background: #252526;
-    border-bottom: 1px solid #2a2a2a;
+    color: var(--muted);
+    background: var(--panel);
+    border-bottom: 1px solid var(--elevated);
     flex: 0 0 auto;
     user-select: none;
   }
@@ -104,11 +129,11 @@
     flex: 0 0 auto;
   }
   .label {
-    color: #cccccc;
+    color: var(--fg);
     font-weight: 600;
   }
   .dir {
-    color: #6a6a6a;
+    color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -124,14 +149,14 @@
     margin-left: auto;
     background: none;
     border: none;
-    color: #6a6a6a;
+    color: var(--muted);
     cursor: pointer;
     padding: 2px 4px;
     border-radius: 3px;
   }
   .x:hover {
-    color: #ddd;
-    background: #3a3d41;
+    color: var(--fg);
+    background: var(--elevated);
   }
   .term {
     flex: 1 1 auto;

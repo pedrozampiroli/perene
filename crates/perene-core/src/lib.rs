@@ -6,6 +6,7 @@
 
 use uuid::Uuid;
 
+pub mod harness;
 pub mod harness_env;
 pub mod history;
 pub mod models;
@@ -13,13 +14,18 @@ pub mod paths;
 pub mod settings;
 pub mod sqlite;
 pub mod store;
+pub mod theme;
+pub mod themes_store;
 pub mod usage;
 
+pub use harness::{Harness, HarnessStore, McpServer, Skill};
 pub use history::SessionRecord;
 pub use models::{
     Folder, LayoutNode, Manifest, Pane, PaneKind, SplitDirection, Tab, Workspace,
 };
 pub use settings::{Settings, SettingsStore};
+pub use theme::Theme;
+pub use themes_store::ThemesStore;
 pub use store::ManifestStore;
 pub use usage::UsageStats;
 

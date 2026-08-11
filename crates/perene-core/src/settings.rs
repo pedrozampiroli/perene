@@ -35,6 +35,10 @@ pub struct Settings {
     /// `false` até o usuário concluir (ou pular) o onboarding de boas-vindas.
     #[serde(default)]
     pub onboarding_done: bool,
+    /// Id do tema ativo (ver `theme::Theme`). Vazio = o embutido `dark-plus`,
+    /// que reproduz o visual que o app sempre teve.
+    #[serde(default)]
+    pub theme: String,
     /// Abrir sessões novas em modo ACP (chat estruturado) em vez da CLI no
     /// terminal. Só vale para as ferramentas que têm adapter; as demais seguem
     /// no terminal. Desligado por padrão: o terminal é o modo consagrado.
@@ -70,6 +74,7 @@ impl Default for Settings {
             editor_panel_width: default_editor_panel_width(),
             locale: String::new(),
             onboarding_done: false,
+            theme: String::new(),
             acp_mode: false,
             acp_terminal: true,
         }
@@ -125,6 +130,7 @@ mod tests {
             editor_panel_width: 280,
             locale: "pt-BR".into(),
             onboarding_done: true,
+            theme: "one-dark".into(),
             acp_mode: true,
             acp_terminal: false,
         };

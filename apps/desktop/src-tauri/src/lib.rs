@@ -4,8 +4,11 @@
 //! terminal viram mensagens IPC. O daemon detém os PTYs e sobrevive à janela.
 //! No M3 entram os comandos de estado (manifest/settings/paste).
 
+mod appearance;
+mod cli_notify;
 mod client;
 mod files;
+mod harness_cmds;
 mod shells;
 mod state;
 
@@ -14,9 +17,15 @@ use state::Persist;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Configura o bell (BEL) do claude/codex/opencode em background: I/O em
+    // disco não pode atrasar a janela abrindo, e uma falha aqui (ex.: config
+    // corrompido) nunca deve derrubar o app.
+    std::thread::spawn(cli_notify::ensure_all);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(DaemonClient::default())
         .manage(Persist::default())
         .invoke_handler(tauri::generate_handler![
@@ -63,6 +72,18 @@ pub fn run() {
             files::git_worktree_list,
             files::git_worktree_add,
             files::create_project_worktree,
+            appearance::themes_list,
+            appearance::theme_active,
+            appearance::theme_import_zed,
+            appearance::theme_remove,
+            harness_cmds::harness_list,
+            harness_cmds::mcp_upsert,
+            harness_cmds::mcp_remove,
+            harness_cmds::mcp_set_enabled,
+            harness_cmds::mcp_copy_to,
+            harness_cmds::skills_list,
+            harness_cmds::skill_install,
+            harness_cmds::skill_remove,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Perene");

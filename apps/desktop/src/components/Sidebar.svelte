@@ -176,8 +176,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #202020;
-    color: #cccccc;
+    background: var(--bg);
+    color: var(--fg);
     font-size: 13px;
     overflow-y: auto;
     user-select: none;
@@ -190,25 +190,25 @@
     font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #7a7a7a;
+    color: var(--muted);
   }
   .add {
     display: flex;
     align-items: center;
     background: none;
     border: none;
-    color: #9a9a9a;
+    color: var(--muted);
     cursor: pointer;
     padding: 2px 4px;
     border-radius: 4px;
   }
   .add:hover {
-    background: #333;
-    color: #fff;
+    background: var(--border);
+    color: var(--fg);
   }
   .workspaces {
     padding: 0 6px 6px;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid var(--elevated);
   }
   .ws-row,
   .tab-row,
@@ -223,11 +223,11 @@
   .ws-row:hover,
   .tab-row:hover,
   .folder-head:hover {
-    background: #2a2d2e;
+    background: var(--elevated);
   }
   .ws-row.active,
   .tab-row.active {
-    background: #37373d;
+    background: var(--elevated);
   }
   .tab-row.drag {
     opacity: 0.45;
@@ -242,8 +242,8 @@
   }
   .fcount {
     font-size: 10px;
-    color: #6a6a6a;
-    background: #2a2a2a;
+    color: var(--muted);
+    background: var(--elevated);
     border-radius: 8px;
     padding: 0 5px;
   }
@@ -254,7 +254,7 @@
     width: 100%;
     background: none;
     border: none;
-    color: #6a6a6a;
+    color: var(--muted);
     cursor: pointer;
     font-size: 11px;
     padding: 3px 8px 2px;
@@ -262,8 +262,8 @@
     text-align: left;
   }
   .dirline:hover {
-    color: #b8b8b8;
-    background: #2a2d2e;
+    color: var(--muted);
+    background: var(--elevated);
   }
   .dirline span {
     overflow: hidden;
@@ -279,20 +279,20 @@
   }
   /* Feedback de onde a aba vai cair. */
   .tree.over {
-    border-color: #007acc80;
-    background: #007acc10;
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
   }
   .folder {
     border: 1px dashed transparent;
     border-radius: 6px;
   }
   .folder.over {
-    border-color: #007acc;
-    background: #007acc1a;
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
   .fempty {
     font-size: 11px;
-    color: #5a5a5a;
+    color: var(--border);
     padding: 3px 8px 5px 30px;
     font-style: italic;
   }
@@ -300,7 +300,7 @@
     margin-left: 6px;
   }
   .folder :global(.ficon) {
-    color: #8a8a8a;
+    color: var(--muted);
     flex: 0 0 auto;
   }
   .folder .tab-row {
@@ -309,7 +309,7 @@
   .caret {
     display: flex;
     align-items: center;
-    color: #8a8a8a;
+    color: var(--muted);
     flex: 0 0 auto;
   }
   .ticon {
@@ -330,7 +330,7 @@
     align-items: center;
     background: none;
     border: none;
-    color: #666;
+    color: var(--muted);
     cursor: pointer;
     padding: 2px;
     border-radius: 3px;
@@ -342,7 +342,7 @@
     opacity: 1;
   }
   .mini:hover {
-    color: #eee;
-    background: #4a4a4a;
+    color: var(--fg);
+    background: var(--border);
   }
 </style>

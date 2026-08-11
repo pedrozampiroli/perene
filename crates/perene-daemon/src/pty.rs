@@ -22,12 +22,16 @@ pub fn build_command(req: &SpawnRequest) -> CommandBuilder {
     cmd
 }
 
-/// Remove variáveis de *sessão de harness* herdadas — ver
-/// [`perene_core::harness_env`] para o porquê. A lista é compartilhada com o
-/// modo ACP de propósito: os dois caminhos não podem divergir.
+/// Aplica as correções de ambiente do [`perene_core::harness_env`]: variáveis
+/// de sessão de harness herdadas e a poluição do AppImage. A lista é
+/// compartilhada com o modo ACP de propósito — os caminhos não podem divergir.
 fn sanitize_env(cmd: &mut CommandBuilder) {
-    for key in perene_core::harness_env::inherited_session_vars() {
-        cmd.env_remove(&key);
+    use perene_core::harness_env::EnvFix;
+    for fix in perene_core::harness_env::child_env_fixes() {
+        match fix {
+            EnvFix::Remove(key) => cmd.env_remove(&key),
+            EnvFix::Set(key, value) => cmd.env(&key, &value),
+        }
     }
 }
 
@@ -90,4 +94,35 @@ fn home_dir() -> Option<String> {
     std::env::var("HOME")
         .ok()
         .or_else(|| std::env::var("USERPROFILE").ok())
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::strip_appdir_entries;
+
+    const APPDIR: &str = "/tmp/.mount_PereneAbc123";
+
+    #[test]
+    fn preserva_o_valor_do_usuario_e_tira_o_do_bundle() {
+        // Formato real do AppRun: entradas do bundle prefixadas, original no fim.
+        let value = format!("{APPDIR}/usr/lib/:{APPDIR}/usr/lib64/:/opt/cuda/lib64");
+        assert_eq!(
+            strip_appdir_entries(APPDIR, &value).as_deref(),
+            Some("/opt/cuda/lib64")
+        );
+    }
+
+    #[test]
+    fn some_quando_a_variavel_so_existia_por_causa_do_bundle() {
+        let value = format!("{APPDIR}/usr/share/pyshared/:");
+        assert_eq!(strip_appdir_entries(APPDIR, &value), None);
+    }
+
+    #[test]
+    fn nao_mexe_em_valor_sem_appdir() {
+        assert_eq!(
+            strip_appdir_entries(APPDIR, "/usr/share:/usr/local/share").as_deref(),
+            Some("/usr/share:/usr/local/share")
+        );
+    }
 }

@@ -302,9 +302,14 @@ impl ClientTools {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        // Mesma limpeza dos PTYs: a ferramenta não pode se achar aninhada.
-        for key in perene_core::harness_env::inherited_session_vars() {
-            cmd.env_remove(&key);
+        // Mesma limpeza dos PTYs: a ferramenta não pode se achar aninhada, e no
+        // AppImage o `PYTHONHOME` do bundle mataria qualquer python que o
+        // agente peça para rodar.
+        for fix in perene_core::harness_env::child_env_fixes() {
+            match fix {
+                perene_core::harness_env::EnvFix::Remove(key) => cmd.env_remove(key),
+                perene_core::harness_env::EnvFix::Set(key, value) => cmd.env(key, value),
+            };
         }
         if let Some(env) = params["env"].as_array() {
             for item in env {
