@@ -71,6 +71,100 @@ export interface Settings {
   editorPanelWidth: number;
   locale: string; // "" = seguir o sistema
   onboardingDone: boolean;
+  theme: string; // "" = tema embutido `dark-plus`
+}
+
+// -- Temas -------------------------------------------------------------------
+// Espelham `perene_core::theme`. Todo token da `ui` vira uma CSS var (--bg, …).
+
+export interface ThemeUiColors {
+  bg: string;
+  fg: string;
+  panel: string;
+  elevated: string;
+  border: string;
+  muted: string;
+  accent: string;
+  accentFg: string;
+  danger: string;
+  warning: string;
+  success: string;
+  selection: string;
+}
+
+export interface ThemeTerminalColors {
+  background: string;
+  foreground: string;
+  cursor: string;
+  selectionBackground: string;
+  black: string;
+  red: string;
+  green: string;
+  yellow: string;
+  blue: string;
+  magenta: string;
+  cyan: string;
+  white: string;
+  brightBlack: string;
+  brightRed: string;
+  brightGreen: string;
+  brightYellow: string;
+  brightBlue: string;
+  brightMagenta: string;
+  brightCyan: string;
+  brightWhite: string;
+}
+
+export interface ThemeSyntaxColors {
+  comment: string;
+  keyword: string;
+  string: string;
+  number: string;
+  function: string;
+  typeName: string;
+  variable: string;
+  constant: string;
+  operator: string;
+  punctuation: string;
+  property: string;
+  tag: string;
+}
+
+export interface Theme {
+  id: string;
+  name: string;
+  light: boolean;
+  ui: ThemeUiColors;
+  terminal: ThemeTerminalColors;
+  syntax: ThemeSyntaxColors;
+}
+
+// -- Harnesses (MCP / skills) ------------------------------------------------
+
+export type HarnessId = "claude" | "codex" | "opencode";
+
+export interface McpServer {
+  name: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  url: string;
+  enabled: boolean;
+}
+
+export interface HarnessInfo {
+  id: HarnessId;
+  configPath: string;
+  configured: boolean;
+  servers: McpServer[];
+  error: string | null;
+}
+
+export interface Skill {
+  name: string;
+  description: string;
+  path: string;
+  projectScoped: boolean;
 }
 
 export interface ShellOption {

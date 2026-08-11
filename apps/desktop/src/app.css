@@ -1,6 +1,30 @@
+/* Tokens do tema.
+ *
+ * Os valores aqui são só o estado inicial (Dark+), pra janela não piscar branca
+ * antes do JS carregar: `theme.svelte.ts` sobrescreve todos no :root assim que o
+ * tema real chega do backend. Componente nenhum deve escrever cor literal —
+ * sempre var(--token). */
 :root {
   color-scheme: dark;
+
   --bg: #1e1e1e;
+  --fg: #d4d4d4;
+  --panel: #252526;
+  --elevated: #2d2d30;
+  --border: #3c3c3c;
+  --muted: #9aa0a6;
+  --accent: #0a84ff;
+  --accent-fg: #ffffff;
+  --danger: #f14c4c;
+  --warning: #e5e510;
+  --success: #23d18b;
+  --selection: #264f78;
+
+  /* Derivados (escritos junto com os de cima pelo runtime de tema). */
+  --overlay: rgba(0, 0, 0, 0.55);
+  --shadow: rgba(0, 0, 0, 0.45);
+  --scrollbar: #4a4a4a;
+  --scrollbar-hover: #5f5f5f;
 }
 
 html,
@@ -14,6 +38,7 @@ body,
 
 body {
   background: var(--bg);
+  color: var(--fg);
   overflow: hidden;
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -28,7 +53,7 @@ body {
    a app para que nenhum painel mude de tamanho quando a barra aparece. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #4a4a4a transparent;
+  scrollbar-color: var(--scrollbar) transparent;
 }
 ::-webkit-scrollbar {
   width: 10px;
@@ -38,13 +63,13 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #4a4a4a;
+  background: var(--scrollbar);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #5f5f5f;
+  background: var(--scrollbar-hover);
   border: 3px solid transparent;
   background-clip: content-box;
 }

@@ -540,8 +540,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #1e1e1e;
-    color: #d4d4d4;
+    background: var(--bg);
+    color: var(--fg);
     overflow: hidden;
   }
   .gitbar {
@@ -551,8 +551,8 @@
     height: 30px;
     flex: 0 0 30px;
     padding: 0 10px;
-    background: #252526;
-    border-bottom: 1px solid #2a2a2a;
+    background: var(--panel);
+    border-bottom: 1px solid var(--elevated);
     font-size: 12px;
     flex-wrap: nowrap;
     /* sem overflow:hidden (cortava o menu de branch); o branch já trunca via .bname */
@@ -565,7 +565,7 @@
   .branch {
     background: none;
     border: none;
-    color: #cccccc;
+    color: var(--fg);
     cursor: pointer;
     font-size: 12px;
     display: flex;
@@ -591,10 +591,10 @@
     bottom: 10px;
     z-index: 30;
     text-align: left;
-    background: #2d2d30;
-    border: 1px solid #3a3a3a;
-    border-left: 3px solid #007acc;
-    color: #d4d4d4;
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    color: var(--fg);
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 12px;
@@ -608,11 +608,11 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #e2c08d;
+    background: var(--warning);
     display: inline-block;
   }
   .ab {
-    color: #9aa0a6;
+    color: var(--muted);
     font-size: 11px;
   }
   .menu {
@@ -620,8 +620,8 @@
     top: 24px;
     left: 0;
     z-index: 20;
-    background: #252526;
-    border: 1px solid #3a3a3a;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 4px;
     min-width: 200px;
@@ -636,9 +636,9 @@
   }
   .new input {
     flex: 1 1 auto;
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
-    color: #fff;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
     border-radius: 4px;
     padding: 3px 6px;
     min-width: 0;
@@ -648,17 +648,17 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: #333;
+    background: var(--border);
     border: none;
-    color: #ccc;
+    color: var(--fg);
     border-radius: 4px;
     padding: 3px 8px;
     cursor: pointer;
     font-size: 11px;
   }
   .gitbar button:not(.branch):hover {
-    background: #3f3f46;
-    color: #fff;
+    background: var(--border);
+    color: var(--fg);
   }
   .bitem {
     padding: 4px 8px;
@@ -667,16 +667,16 @@
     font-size: 12px;
   }
   .bitem:hover {
-    background: #2a2d2e;
+    background: var(--elevated);
   }
   .bitem.cur {
-    color: #4ec9b0;
+    color: var(--success);
   }
   .spacer {
     flex: 1 1 auto;
   }
   .norepo {
-    color: #7a7a7a;
+    color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -684,8 +684,8 @@
   .tabs {
     display: flex;
     height: 26px;
-    background: #252526;
-    border-bottom: 1px solid #2a2a2a;
+    background: var(--panel);
+    border-bottom: 1px solid var(--elevated);
   }
   .tabs button {
     position: relative;
@@ -696,22 +696,22 @@
     justify-content: center;
     background: none;
     border: none;
-    color: #8a8a8a;
+    color: var(--muted);
     padding: 0;
     cursor: pointer;
     border-bottom: 2px solid transparent;
   }
   .tabs button:hover {
-    color: #ddd;
-    background: #2a2d2e;
+    color: var(--fg);
+    background: var(--elevated);
   }
   .tabs .tool {
     width: 32px;
-    color: #7a7a7a;
+    color: var(--muted);
   }
   .tabs button.active {
-    color: #fff;
-    border-bottom-color: #007acc;
+    color: var(--fg);
+    border-bottom-color: var(--accent);
   }
   .badge {
     position: absolute;
@@ -721,8 +721,8 @@
     height: 13px;
     padding: 0 3px;
     box-sizing: border-box;
-    background: #0e639c;
-    color: #fff;
+    background: var(--accent);
+    color: var(--accent-fg);
     border-radius: 7px;
     font-size: 9px;
     line-height: 13px;
@@ -765,7 +765,7 @@
   }
   .pdivider {
     position: relative;
-    background: #2a2a2a;
+    background: var(--elevated);
     cursor: col-resize;
   }
   .pdivider::after {
@@ -778,7 +778,7 @@
   }
   .pdivider:hover,
   .pdivider.dragging {
-    background: #007acc;
+    background: var(--accent);
   }
   .change {
     display: flex;
@@ -789,14 +789,14 @@
     cursor: pointer;
   }
   .change:hover {
-    background: #2a2d2e;
+    background: var(--elevated);
   }
   .change.sel {
-    background: #37373d;
+    background: var(--elevated);
   }
   .st {
     width: 16px;
-    color: #e2c08d;
+    color: var(--warning);
     font-family: monospace;
   }
   .cpath {
@@ -809,13 +809,13 @@
     flex-direction: column;
     gap: 6px;
     padding: 8px;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid var(--elevated);
     margin-bottom: 4px;
   }
   .commitbox input {
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
-    color: #fff;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
     border-radius: 5px;
     padding: 5px 8px;
     outline: none;
@@ -834,24 +834,24 @@
     align-items: center;
     justify-content: center;
     gap: 5px;
-    background: #0e639c;
+    background: var(--accent);
     border: none;
-    color: #fff;
+    color: var(--accent-fg);
     border-radius: 5px;
     padding: 6px;
     cursor: pointer;
     font-size: 12px;
   }
   .commitbox .push-btn {
-    background: #2ea043;
+    background: var(--success);
   }
   .commitbox .push-btn:hover {
-    background: #3fb950;
+    background: var(--success);
   }
   .commitbox button:disabled,
   .wtform button:disabled {
-    background: #333;
-    color: #777;
+    background: var(--border);
+    color: var(--muted);
     cursor: default;
   }
   .commit {
@@ -861,11 +861,11 @@
     border-left: 2px solid transparent;
   }
   .commit:hover {
-    background: #2a2d2e;
+    background: var(--elevated);
   }
   .commit.sel {
-    background: #37373d;
-    border-left-color: #007acc;
+    background: var(--elevated);
+    border-left-color: var(--accent);
   }
   .csubj {
     font-size: 12.5px;
@@ -875,7 +875,7 @@
   }
   .cmeta {
     font-size: 10.5px;
-    color: #8a8a8a;
+    color: var(--muted);
     margin-top: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -889,14 +889,14 @@
     flex-direction: column;
     gap: 6px;
     padding: 8px;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid var(--elevated);
     margin-bottom: 4px;
   }
   .wtform input[type="text"],
   .wtform input:not([type]) {
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
-    color: #fff;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
     border-radius: 5px;
     padding: 5px 8px;
     outline: none;
@@ -907,15 +907,15 @@
     align-items: center;
     gap: 6px;
     font-size: 11.5px;
-    color: #b8b8b8;
+    color: var(--muted);
   }
   .wt {
     padding: 6px 10px;
     border-left: 2px solid transparent;
   }
   .wt.cur {
-    border-left-color: #4ec9b0;
-    background: #4ec9b012;
+    border-left-color: var(--success);
+    background: color-mix(in srgb, var(--success) 7%, transparent);
   }
   .wtacts {
     display: flex;
@@ -926,30 +926,30 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: #333;
+    background: var(--border);
     border: none;
-    color: #ccc;
+    color: var(--fg);
     border-radius: 4px;
     padding: 3px 8px;
     cursor: pointer;
     font-size: 11px;
   }
   .wtacts button:hover {
-    background: #3f3f46;
-    color: #fff;
+    background: var(--border);
+    color: var(--fg);
   }
   .wtbranch {
     font-size: 12.5px;
-    color: #4ec9b0;
+    color: var(--success);
   }
   .wthead {
-    color: #7a7a7a;
+    color: var(--muted);
     font-family: monospace;
     font-size: 11px;
   }
   .wtpath {
     font-size: 11px;
-    color: #8a8a8a;
+    color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -965,17 +965,17 @@
     line-height: 22px;
     padding: 0 10px;
     font-size: 11px;
-    color: #9aa0a6;
-    background: #252526;
-    border-bottom: 1px solid #2a2a2a;
+    color: var(--muted);
+    background: var(--panel);
+    border-bottom: 1px solid var(--elevated);
   }
   .etabs {
     display: flex;
     align-items: stretch;
     height: 30px;
     flex: 0 0 30px;
-    background: #252526;
-    border-bottom: 1px solid #2a2a2a;
+    background: var(--panel);
+    border-bottom: 1px solid var(--elevated);
     overflow-x: auto;
   }
   .etab {
@@ -985,17 +985,17 @@
     padding: 0 8px 0 12px;
     max-width: 180px;
     font-size: 12px;
-    color: #9aa0a6;
+    color: var(--muted);
     cursor: pointer;
-    border-right: 1px solid #2a2a2a;
+    border-right: 1px solid var(--elevated);
     white-space: nowrap;
   }
   .etab:hover {
-    background: #2a2d2e;
+    background: var(--elevated);
   }
   .etab.active {
-    background: #1e1e1e;
-    color: #fff;
+    background: var(--bg);
+    color: var(--fg);
   }
   .etab .en {
     overflow: hidden;
@@ -1005,7 +1005,7 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #e2c08d;
+    background: var(--warning);
     flex: 0 0 auto;
   }
   .ex {
@@ -1013,14 +1013,14 @@
     align-items: center;
     background: none;
     border: none;
-    color: #6a6a6a;
+    color: var(--muted);
     cursor: pointer;
     padding: 2px;
     border-radius: 3px;
   }
   .ex:hover {
-    color: #eee;
-    background: #4a4a4a;
+    color: var(--fg);
+    background: var(--border);
   }
   .editor {
     flex: 1 1 auto;
@@ -1074,20 +1074,20 @@
   }
   .dl.add {
     background: rgba(35, 134, 54, 0.18);
-    color: #6ee7a0;
+    color: var(--success);
   }
   .dl.del {
     background: rgba(248, 81, 73, 0.15);
-    color: #f8938d;
+    color: var(--danger);
   }
   .dl.hunk {
-    color: #3b8eea;
+    color: var(--accent);
   }
   .dl.meta {
-    color: #7a7a7a;
+    color: var(--muted);
   }
   .empty {
-    color: #7a7a7a;
+    color: var(--muted);
     padding: 12px;
     font-size: 13px;
   }

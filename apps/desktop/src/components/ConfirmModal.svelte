@@ -41,9 +41,9 @@
   .modal {
     width: 400px;
     max-width: 92vw;
-    background: #252526;
-    color: #d4d4d4;
-    border: 1px solid #3a3a3a;
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 18px 20px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
@@ -56,10 +56,10 @@
   }
   .warn {
     display: flex;
-    color: #e2c08d;
+    color: var(--warning);
   }
   .warn.danger {
-    color: #f14c4c;
+    color: var(--danger);
   }
   h3 {
     margin: 0;
@@ -68,7 +68,7 @@
   p {
     margin: 0 0 4px;
     font-size: 13px;
-    color: #c9c9c9;
+    color: var(--fg);
     line-height: 1.5;
   }
   .actions {
@@ -85,23 +85,23 @@
     font-size: 13px;
   }
   .cancel {
-    background: #3a3d41;
-    color: #ddd;
+    background: var(--elevated);
+    color: var(--fg);
   }
   .cancel:hover {
-    background: #4a4d51;
+    background: var(--border);
   }
   .ok {
-    background: #0e639c;
-    color: #fff;
+    background: var(--accent);
+    color: var(--accent-fg);
   }
   .ok:hover {
-    background: #1177bb;
+    background: var(--accent);
   }
   .ok.danger {
-    background: #c0392b;
+    background: var(--danger);
   }
   .ok.danger:hover {
-    background: #e04434;
+    background: var(--danger);
   }
 </style>

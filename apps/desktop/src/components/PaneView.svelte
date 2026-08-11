@@ -73,8 +73,8 @@
 </script>
 
 <div class="pane" class:active={isActive} onpointerdown={focusPane}>
-  <div class="pane-head" style="--accent:{isFiles ? '#6ea8fe' : prof.color}">
-    <span class="hicon" style="color:{isFiles ? '#6ea8fe' : prof.color}">
+  <div class="pane-head" style="--accent:{isFiles ? 'var(--accent)' : prof.color}">
+    <span class="hicon" style="color:{isFiles ? 'var(--accent)' : prof.color}">
       {#if isFiles}<Code2 size={13} />{:else}<ToolIcon id={data?.toolProfileId ?? "shell"} size={13} />{/if}
     </span>
     <span class="label">{isFiles ? t("pane.editor") : prof.label}</span>
@@ -95,13 +95,13 @@
     flex-direction: column;
     height: 100%;
     width: 100%;
-    background: #1e1e1e;
+    background: var(--bg);
     border: 1px solid transparent;
     box-sizing: border-box;
     overflow: hidden;
   }
   .pane.active {
-    border-color: #3a3d41;
+    border-color: var(--elevated);
   }
   .pane-head {
     display: flex;
@@ -110,9 +110,9 @@
     height: 22px;
     padding: 0 8px;
     font-size: 11px;
-    color: #9aa0a6;
-    background: #252526;
-    border-bottom: 1px solid #2a2a2a;
+    color: var(--muted);
+    background: var(--panel);
+    border-bottom: 1px solid var(--elevated);
     flex: 0 0 auto;
     user-select: none;
   }
@@ -122,11 +122,11 @@
     flex: 0 0 auto;
   }
   .label {
-    color: #cccccc;
+    color: var(--fg);
     font-weight: 600;
   }
   .dir {
-    color: #6a6a6a;
+    color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -142,14 +142,14 @@
     margin-left: auto;
     background: none;
     border: none;
-    color: #6a6a6a;
+    color: var(--muted);
     cursor: pointer;
     padding: 2px 4px;
     border-radius: 3px;
   }
   .x:hover {
-    color: #ddd;
-    background: #3a3d41;
+    color: var(--fg);
+    background: var(--elevated);
   }
   .term {
     flex: 1 1 auto;

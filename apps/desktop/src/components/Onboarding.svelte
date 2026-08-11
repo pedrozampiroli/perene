@@ -31,12 +31,12 @@
 
   const STEPS: Step[] = [
     { key: "welcome", icon: Sparkles, color: "#d97557" },
-    { key: "sessions", icon: InfinityIcon, color: "#4ec9b0" },
+    { key: "sessions", icon: InfinityIcon, color: "var(--success)" },
     { key: "profiles", icon: LayoutGrid, color: "#0fa37f", target: "profiles" },
     { key: "organize", icon: FolderTree, color: "#5c8cfa", target: "tabs" },
     { key: "splits", icon: LayoutGrid, color: "#c586c0", target: "splits" },
-    { key: "editor", icon: Code2, color: "#e2c08d", target: "editor" },
-    { key: "git", icon: GitBranch, color: "#d4a72c", target: "git" },
+    { key: "editor", icon: Code2, color: "var(--warning)", target: "editor" },
+    { key: "git", icon: GitBranch, color: "var(--warning)", target: "git" },
     { key: "shortcuts", icon: Keyboard, color: "#bc8cff", target: "settings" },
   ];
 
@@ -253,7 +253,7 @@
     content: "";
     position: absolute;
     inset: -3px;
-    border: 2px solid #4ea1ff;
+    border: 2px solid var(--accent);
     border-radius: 12px;
     animation: pulse 1.9s ease-out infinite;
   }
@@ -288,9 +288,9 @@
     z-index: 501;
     width: 380px;
     max-width: 92vw;
-    background: #252526;
-    color: #d4d4d4;
-    border: 1px solid #3f3f46;
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 18px 20px 14px;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
@@ -321,8 +321,8 @@
     position: absolute;
     width: 12px;
     height: 12px;
-    background: #252526;
-    border: 1px solid #3f3f46;
+    background: var(--panel);
+    border: 1px solid var(--border);
     transform: rotate(45deg);
     margin: -6px 0 0 -6px;
   }
@@ -350,14 +350,14 @@
     display: flex;
     background: none;
     border: none;
-    color: #6a6a6a;
+    color: var(--muted);
     cursor: pointer;
     padding: 3px;
     border-radius: 5px;
   }
   .close:hover {
-    color: #ddd;
-    background: #3a3d41;
+    color: var(--fg);
+    background: var(--elevated);
   }
   .head {
     display: flex;
@@ -381,13 +381,13 @@
     margin: 0;
     font-size: 16px;
     font-weight: 600;
-    color: #fff;
+    color: var(--fg);
   }
   .body {
     margin: 0;
     font-size: 13px;
     line-height: 1.6;
-    color: #c2c2c2;
+    color: var(--fg);
   }
   .showcase {
     display: flex;
@@ -402,14 +402,14 @@
     gap: 6px;
     padding: 6px 10px;
     border-radius: 8px;
-    background: #1e1e1e;
-    border: 1px solid #333;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-top: 2px solid var(--c);
     color: var(--c);
     font-size: 11.5px;
   }
   .chip span {
-    color: #cfcfcf;
+    color: var(--fg);
   }
   .keys {
     display: grid;
@@ -423,7 +423,7 @@
     align-items: center;
     gap: 7px;
     font-size: 11.5px;
-    color: #b8b8b8;
+    color: var(--muted);
     min-width: 0;
   }
   .krow span {
@@ -435,13 +435,13 @@
     flex: 0 0 auto;
     min-width: 38px;
     text-align: center;
-    background: #1e1e1e;
-    border: 1px solid #444;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 5px;
     padding: 2px 5px;
     font-family: Menlo, monospace;
     font-size: 10.5px;
-    color: #ddd;
+    color: var(--fg);
   }
   .tip {
     display: flex;
@@ -449,16 +449,16 @@
     gap: 7px;
     margin: 14px 0 2px;
     padding: 9px 11px;
-    background: #1e1e1e;
-    border-left: 2px solid #d4a72c;
+    background: var(--bg);
+    border-left: 2px solid var(--warning);
     border-radius: 6px;
     font-size: 11.5px;
     line-height: 1.5;
-    color: #a9a9a9;
+    color: var(--muted);
     text-align: left;
   }
   .tip :global(svg) {
-    color: #d4a72c;
+    color: var(--warning);
     flex: 0 0 auto;
     margin-top: 1px;
   }
@@ -468,7 +468,7 @@
     justify-content: space-between;
     margin-top: 14px;
     padding-top: 12px;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--border);
   }
   .dots {
     display: flex;
@@ -479,13 +479,13 @@
     height: 6px;
     border-radius: 50%;
     border: none;
-    background: #4a4a4a;
+    background: var(--border);
     cursor: pointer;
     padding: 0;
     transition: all 0.25s ease;
   }
   .dot.on {
-    background: #4ea1ff;
+    background: var(--accent);
     width: 16px;
     border-radius: 3px;
   }
@@ -505,17 +505,17 @@
   }
   .ghost {
     background: none;
-    color: #9aa0a6;
+    color: var(--muted);
   }
   .ghost:hover {
-    background: #3a3d41;
-    color: #ddd;
+    background: var(--elevated);
+    color: var(--fg);
   }
   .primary {
-    background: #0e639c;
-    color: #fff;
+    background: var(--accent);
+    color: var(--accent-fg);
   }
   .primary:hover {
-    background: #1177bb;
+    background: var(--accent);
   }
 </style>

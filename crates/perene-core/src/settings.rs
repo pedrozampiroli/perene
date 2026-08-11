@@ -35,6 +35,10 @@ pub struct Settings {
     /// `false` até o usuário concluir (ou pular) o onboarding de boas-vindas.
     #[serde(default)]
     pub onboarding_done: bool,
+    /// Id do tema ativo (ver `theme::Theme`). Vazio = o embutido `dark-plus`,
+    /// que reproduz o visual que o app sempre teve.
+    #[serde(default)]
+    pub theme: String,
 }
 
 fn default_true() -> bool {
@@ -59,6 +63,7 @@ impl Default for Settings {
             editor_panel_width: default_editor_panel_width(),
             locale: String::new(),
             onboarding_done: false,
+            theme: String::new(),
         }
     }
 }
@@ -112,6 +117,7 @@ mod tests {
             editor_panel_width: 280,
             locale: "pt-BR".into(),
             onboarding_done: true,
+            theme: "one-dark".into(),
         };
         store.save(&s).unwrap();
         assert_eq!(store.load().unwrap(), s);

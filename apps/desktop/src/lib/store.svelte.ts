@@ -6,6 +6,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "./api";
+import { theme } from "./theme.svelte";
 import { i18n, detectLocale, t } from "./i18n.svelte";
 import { baseName, isInWorktree } from "./paths";
 import { PROFILES, buildCommand, needsSessionId } from "./profiles";
@@ -174,6 +175,7 @@ class AppStore {
     editorPanelWidth: 240,
     locale: "",
     onboardingDone: false,
+    theme: "",
   });
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
@@ -216,11 +218,16 @@ class AppStore {
     this.settings = s;
     // Idioma: preferência salva ou, se vazia, o do sistema.
     i18n.setLocale(s.locale || detectLocale());
+    // Tema: aplicado antes de `loaded` virar true, pra UI não piscar no padrão.
+    await theme.init(s.theme);
     this.syncActivePane();
     this.loaded = true;
     // Primeira execução → mostra as boas-vindas.
     if (!s.onboardingDone) this.onboardingOpen = true;
   }
+
+  /** Tela de MCP/skills das ferramentas (claude/codex/opencode). */
+  harnessOpen = $state(false);
 
   /** Onboarding: aberto na 1ª execução e revisível pelas configurações. */
   onboardingOpen = $state(false);
@@ -233,6 +240,13 @@ class AppStore {
       this.settings.onboardingDone = true;
       this.saveSettings();
     }
+  }
+
+  /** Troca o tema: aplica na hora (UI, terminais e editores novos) e persiste. */
+  async setTheme(id: string): Promise<void> {
+    this.settings.theme = id;
+    await theme.select(id);
+    this.saveSettings();
   }
 
   setLocale(code: string): void {

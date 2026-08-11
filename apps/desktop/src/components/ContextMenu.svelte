@@ -65,8 +65,8 @@
     min-width: 200px;
     max-height: 70vh;
     overflow-y: auto;
-    background: #252526;
-    border: 1px solid #3a3a3a;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 4px;
     box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6);
@@ -76,7 +76,7 @@
     width: 100%;
     background: none;
     border: none;
-    color: #cccccc;
+    color: var(--fg);
     text-align: left;
     padding: 6px 10px;
     border-radius: 5px;
@@ -85,23 +85,23 @@
     white-space: nowrap;
   }
   .item:hover:not(:disabled) {
-    background: #04395e;
-    color: #fff;
+    background: var(--selection);
+    color: var(--fg);
   }
   .item:disabled {
-    color: #5a5a5a;
+    color: var(--border);
     cursor: default;
   }
   .item.danger {
-    color: #f14c4c;
+    color: var(--danger);
   }
   .item.danger:hover:not(:disabled) {
-    background: #5a1d1d;
-    color: #ff8b8b;
+    background: color-mix(in srgb, var(--danger) 32%, var(--bg));
+    color: var(--danger);
   }
   .sep {
     height: 1px;
-    background: #3a3a3a;
+    background: var(--border);
     margin: 4px 2px;
   }
 </style>

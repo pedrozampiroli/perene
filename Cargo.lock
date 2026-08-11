@@ -2574,11 +2574,13 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 name = "perene-core"
 version = "0.1.0"
 dependencies = [
+ "indexmap 2.14.0",
  "rayon",
  "regex",
  "serde",
  "serde_json",
  "tempfile",
+ "toml 1.1.2+spec-1.1.0",
  "uuid",
 ]
 
@@ -3308,6 +3310,7 @@ version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
+ "indexmap 2.14.0",
  "itoa",
  "memchr",
  "serde",

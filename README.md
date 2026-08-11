@@ -54,12 +54,25 @@ landing around **109 MB**.
   worktree in `.perene/worktrees/` (auto-added to `.gitignore`) so an agent can
   work without touching your tree — and you can open the editor *inside* it to
   watch what it's doing.
-- 📝 **Built-in editor** with file tabs, syntax highlighting, `⌘S`, side-by-side
-  diffs, commit log and a commit box.
+- 📝 **Built-in editor** with file tabs, `⌘S`, side-by-side diffs, commit log
+  and a commit box.
+- 🌈 **Syntax highlighting for 76 file types** — Go, Rust, TypeScript, Python,
+  YAML, TOML, shell, Dockerfile, SQL, Java, C/C++ and the long tail. Files that
+  identify by name (`Dockerfile`, `Makefile`, `.env`) are recognized too.
 - 🔎 **Editor shortcuts you already know**: `⌘P` fuzzy file open, `⌘⇧F` project
   search (ripgrep), `⌘⇧H` project replace, `⌘F` / `⌘H` in-file.
 
 **Everything else**
+- 🎨 **Themes** for the whole app at once — UI, terminals and editor. Three are
+  built in, and you can **import any Zed theme**: they're plain JSON, so a theme
+  family from Zed lands here with its terminal palette and syntax colors intact.
+  Switching repaints open terminals and editors live.
+- 🔌 **MCP servers and skills, managed in-app.** One tab per tool, writing each
+  one's native config (`~/.claude.json`, `~/.codex/config.toml`,
+  `opencode.json`) while preserving everything else in those files. Toggling a
+  server off keeps its full config instead of deleting it, and you can copy a
+  server between tools without retyping command, args and env. Claude Code
+  skills are listed and installable from a folder.
 - 📊 **Token usage** across all three harnesses, with a disk cache (~2.4s cold,
   ~16ms warm over 1500+ sessions).
 - 🕐 **Session history** with search, preview and one-click resume.

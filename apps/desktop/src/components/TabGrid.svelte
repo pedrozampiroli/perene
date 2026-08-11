@@ -33,10 +33,10 @@
     align-items: center;
     justify-content: center;
     gap: 12px;
-    color: #6a6a6a;
+    color: var(--muted);
   }
   .empty button {
-    background: #0e639c;
+    background: var(--accent);
     color: white;
     border: none;
     padding: 8px 16px;
