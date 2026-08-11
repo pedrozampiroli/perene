@@ -189,6 +189,8 @@
   "menu.deleteFolder": "Excluir pasta",
   "menu.open": "Abrir",
   "menu.openEditorHere": "Abrir editor nesta pasta",
+  "menu.duplicate": "Duplicar (em branco)",
+  "menu.fork": "Bifurcar (mantém a conversa)",
   "menu.moveTo": "→ {folder}",
   "menu.moveToRoot": "→ Raiz (fora de pastas)",
   "menu.closeTab": "Fechar aba",

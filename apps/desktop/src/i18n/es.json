@@ -189,6 +189,8 @@
   "menu.deleteFolder": "Eliminar carpeta",
   "menu.open": "Abrir",
   "menu.openEditorHere": "Abrir editor en esta carpeta",
+  "menu.duplicate": "Duplicar (en blanco)",
+  "menu.fork": "Bifurcar (mantiene la conversación)",
   "menu.moveTo": "→ {folder}",
   "menu.moveToRoot": "→ Raíz (fuera de carpetas)",
   "menu.closeTab": "Cerrar pestaña",

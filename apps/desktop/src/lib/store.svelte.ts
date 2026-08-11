@@ -9,7 +9,14 @@ import { acp } from "./acp.svelte";
 import { api } from "./api";
 import { i18n, detectLocale, t } from "./i18n.svelte";
 import { baseName, isInWorktree } from "./paths";
-import { PROFILES, acpConfig, buildCommand, needsSessionId, supportsAcp } from "./profiles";
+import {
+  PROFILES,
+  acpConfig,
+  buildCommand,
+  needsSessionId,
+  supportsAcp,
+  supportsFork,
+} from "./profiles";
 import type {
   LayoutNode,
   Manifest,
@@ -511,10 +518,15 @@ class AppStore {
       action: () => this.moveTab(id, f.id),
     }));
     const cwd = tab?.panes[0]?.workingDirectory;
+    // Fork só aparece onde faz sentido: shell e editor não têm conversa.
+    const podeBifurcar = tab?.panes.some((p) => supportsFork(p.toolProfileId)) ?? false;
     return [
       { label: t("menu.open"), action: () => this.selectTab(id) },
       { label: t("menu.rename"), action: () => this.openRenameModal("tab", id, tab?.title ?? "") },
       ...(cwd ? [{ label: t("menu.openEditorHere"), action: () => this.openFilesTab(cwd) }] : []),
+      { separator: true },
+      { label: t("menu.duplicate"), action: () => this.duplicateTab(id) },
+      ...(podeBifurcar ? [{ label: t("menu.fork"), action: () => this.forkTab(id) }] : []),
       { separator: true },
       ...(moves.length ? moves : []),
       ...(tab?.folderId ? [{ label: t("menu.moveToRoot"), action: () => this.moveTab(id, null) }] : []),
@@ -675,6 +687,7 @@ class AppStore {
       workingDirectory: cwd,
       harnessSessionId: needsSessionId(profileId) ? uuid() : null,
       resumeExisting: false,
+      forkFromSessionId: null,
       scrollbackFile: null,
       createdAt: now(),
       updatedAt: now(),
@@ -730,6 +743,65 @@ class AppStore {
   }
 
   /**
+   * Bifurca a sessão de uma aba numa aba nova — CLI ou ACP.
+   *
+   * No CLI a bifurcação é uma flag da própria ferramenta
+   * (`--fork-session`, `codex fork`, `--fork`); no ACP é `session/fork`. Nos
+   * dois casos o resultado é o mesmo para quem usa: a conversa até aqui é
+   * herdada e as duas abas seguem separadas.
+   */
+  forkTab(tabId: string): void {
+    const ws = this.activeWorkspace;
+    const tab = ws?.tabs.find((t) => t.id === tabId);
+    const origem = tab?.panes.find((p) => supportsFork(p.toolProfileId));
+    if (!ws || !tab || !origem) return;
+    if (origem.kind === "acp") {
+      this.forkAcpTab(origem.id);
+      return;
+    }
+    // CLI: o pane novo nasce apontando para a sessão de origem. Sem id
+    // (codex/opencode não fixam um), string vazia = "a mais recente daqui".
+    const pane: Pane = {
+      ...this.makePane(origem.toolProfileId, origem.workingDirectory),
+      forkFromSessionId: origem.harnessSessionId ?? "",
+    };
+    this.openTabWith(ws, tab, pane, `${tab.title} (fork)`);
+  }
+
+  /** Aba nova com o mesmo perfil e diretório, conversa em branco. */
+  duplicateTab(tabId: string): void {
+    const ws = this.activeWorkspace;
+    const tab = ws?.tabs.find((t) => t.id === tabId);
+    const origem = tab?.panes[0];
+    if (!ws || !tab || !origem) return;
+    const pane =
+      origem.kind === "files"
+        ? this.makeFilesPane(origem.workingDirectory)
+        : this.makePane(origem.toolProfileId, origem.workingDirectory);
+    if (origem.kind === "acp") pane.kind = "acp";
+    this.openTabWith(ws, tab, pane, tab.title);
+  }
+
+  /** Cria a aba ao lado da original, já focada. */
+  private openTabWith(ws: Workspace, base: Tab, pane: Pane, title: string): void {
+    const tab: Tab = {
+      id: newId("tab"),
+      folderId: base.folderId ?? null,
+      title,
+      panes: [pane],
+      layout: leaf(pane.id),
+      activePaneId: pane.id,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    const at = ws.tabs.findIndex((t) => t.id === base.id);
+    ws.tabs.splice(at + 1, 0, tab);
+    ws.activeTabId = tab.id;
+    this.activePaneId = pane.id;
+    this.save();
+  }
+
+  /**
    * Bifurca uma sessão ACP numa aba nova.
    *
    * A conversa até aqui é herdada; dali em diante as duas seguem separadas.
@@ -753,6 +825,7 @@ class AppStore {
       workingDirectory: origem.workingDirectory,
       harnessSessionId: null, // o id vem do daemon quando o fork abre
       resumeExisting: false,
+      forkFromSessionId: sessionId,
       scrollbackFile: null,
       createdAt: now(),
       updatedAt: now(),
@@ -762,20 +835,8 @@ class AppStore {
     this.forkPending.add(pane.id);
 
     const atual = ws.tabs.find((t) => t.panes.some((p) => p.id === paneId));
-    const tab: Tab = {
-      id: newId("tab"),
-      folderId: atual?.folderId ?? null,
-      title: `${atual?.title ?? origem.toolProfileId} (fork)`,
-      panes: [pane],
-      layout: leaf(pane.id),
-      activePaneId: pane.id,
-      createdAt: now(),
-      updatedAt: now(),
-    };
-    ws.tabs.push(tab);
-    ws.activeTabId = tab.id;
-    this.activePaneId = pane.id;
-    this.save();
+    if (!atual) return;
+    this.openTabWith(ws, atual, pane, `${atual.title} (fork)`);
 
     void api
       .acpFork(

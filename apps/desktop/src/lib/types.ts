@@ -21,6 +21,8 @@ export interface Pane {
   workingDirectory: string;
   harnessSessionId?: string | null;
   resumeExisting: boolean;
+  /** Presente = o pane bifurca esta sessão. Vazio = a mais recente do diretório. */
+  forkFromSessionId?: string | null;
   scrollbackFile?: string | null;
   createdAt: number;
   updatedAt: number;

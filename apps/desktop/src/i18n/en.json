@@ -189,6 +189,8 @@
   "menu.deleteFolder": "Delete folder",
   "menu.open": "Open",
   "menu.openEditorHere": "Open editor in this folder",
+  "menu.duplicate": "Duplicate (fresh)",
+  "menu.fork": "Fork (keep conversation)",
   "menu.moveTo": "→ {folder}",
   "menu.moveToRoot": "→ Root (outside folders)",
   "menu.closeTab": "Close tab",
