@@ -53,8 +53,13 @@ jobs:
       - name: cargo build
         run: cargo build --workspace
 
-  # Gerar instaladores (.dmg / .msi+NSIS / .deb+AppImage). Ideal do M6:
-  # roda em tags v* ou manualmente e sobe os artefatos.
+  # Gerar instaladores. `targets: "all"` no tauri.conf faz cada runner produzir
+  # tudo que a sua plataforma suporta: .dmg no mac, .msi + .exe (NSIS) no
+  # Windows, .deb + .rpm + .AppImage no Linux.
+  #
+  # Flatpak NÃO sai daqui: o Tauri não empacota flatpak — precisa de manifesto
+  # próprio e `flatpak-builder`, normalmente com publicação no Flathub. Fica de
+  # fora até alguém querer manter isso.
   bundle:
     name: bundle (${{ matrix.os }})
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -87,16 +92,57 @@ jobs:
 
       - name: Tauri build (instalador)
         working-directory: apps/desktop
-        run: npm run tauri build
+        shell: bash
+        # O `bundle_dmg.sh` do mac falha de forma intermitente: o `hdiutil` não
+        # consegue destacar o volume e o .dmg não sai (o .app sai normal). Sem
+        # retry, a release sairia sem o macOS. Antes de tentar de novo é preciso
+        # desmontar o volume que ficou pendurado — senão a segunda tentativa
+        # esbarra no mesmo bloqueio.
+        run: |
+          npm run tauri build && exit 0
+          echo "::warning::primeiro build falhou; limpando e tentando de novo"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            hdiutil info | awk '/\/Volumes\/Perene/ {print $1}' | xargs -r -n1 hdiutil detach -force || true
+          fi
+          npm run tauri build
 
+      # `error` e não `ignore`: com `ignore`, um bundle que falhou virava um
+      # artefato vazio e a release saía sem aquela plataforma, em silêncio.
       - name: Subir artefatos
         uses: actions/upload-artifact@v4
         with:
           name: perene-${{ matrix.os }}
-          if-no-files-found: ignore
+          if-no-files-found: error
           path: |
             target/release/bundle/**/*.dmg
             target/release/bundle/**/*.msi
             target/release/bundle/**/*.exe
             target/release/bundle/**/*.deb
+            target/release/bundle/**/*.rpm
             target/release/bundle/**/*.AppImage
+
+  # Publica os instaladores numa Release do GitHub: artefato de Action expira e
+  # exige login para baixar; a release dá link público e permanente.
+  release:
+    name: release
+    needs: bundle
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artefatos
+
+      - name: Publicar
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: artefatos/**/*
+          body: |
+            > **macOS e Windows**: os binários não são assinados com conta de
+            > desenvolvedor, então o sistema avisa que não conseguiu verificar o
+            > app. No macOS, depois de arrastar para Aplicativos:
+            > `xattr -dr com.apple.quarantine /Applications/Perene.app`
