@@ -155,23 +155,32 @@ mod tests {
         assert!(!is_session_var("CLAUDE_CONFIG_DIR"), "config não é sessão");
     }
 
+    // Lógica de string pura: os testes NÃO são `cfg(linux)` de propósito, para
+    // que o CI do mac e do Windows também pegue regressão aqui. Do contrário só
+    // o Ubuntu compilaria — e um erro passaria despercebido no dia a dia.
+    const APPDIR: &str = "/tmp/.mount_PereneAbc123";
+
     #[test]
-    fn strips_only_the_bundle_entries_from_a_path_list() {
-        let appdir = "/tmp/.mount_perene";
-        // O do usuário sobrevive; o do bundle sai.
+    fn preserva_o_valor_do_usuario_e_tira_o_do_bundle() {
+        // Formato real do AppRun: entradas do bundle prefixadas, original no fim.
+        let value = format!("{APPDIR}/usr/lib/:{APPDIR}/usr/lib64/:/opt/cuda/lib64");
         assert_eq!(
-            strip_appdir_entries(appdir, "/tmp/.mount_perene/usr/lib:/usr/lib"),
-            Some("/usr/lib".to_string())
+            strip_appdir_entries(APPDIR, &value).as_deref(),
+            Some("/opt/cuda/lib64")
         );
-        // Só bundle → a variável não deveria existir para o filho.
+    }
+
+    #[test]
+    fn some_quando_a_variavel_so_existia_por_causa_do_bundle() {
+        let value = format!("{APPDIR}/usr/share/pyshared/:");
+        assert_eq!(strip_appdir_entries(APPDIR, &value), None);
+    }
+
+    #[test]
+    fn nao_mexe_em_valor_sem_appdir() {
         assert_eq!(
-            strip_appdir_entries(appdir, "/tmp/.mount_perene/usr/lib"),
-            None
-        );
-        // Nada do bundle → intocada.
-        assert_eq!(
-            strip_appdir_entries(appdir, "/usr/lib:/usr/local/lib"),
-            Some("/usr/lib:/usr/local/lib".to_string())
+            strip_appdir_entries(APPDIR, "/usr/share:/usr/local/share").as_deref(),
+            Some("/usr/share:/usr/local/share")
         );
     }
 

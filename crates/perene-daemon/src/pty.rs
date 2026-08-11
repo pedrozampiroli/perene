@@ -95,34 +95,3 @@ fn home_dir() -> Option<String> {
         .ok()
         .or_else(|| std::env::var("USERPROFILE").ok())
 }
-
-#[cfg(all(test, target_os = "linux"))]
-mod tests {
-    use super::strip_appdir_entries;
-
-    const APPDIR: &str = "/tmp/.mount_PereneAbc123";
-
-    #[test]
-    fn preserva_o_valor_do_usuario_e_tira_o_do_bundle() {
-        // Formato real do AppRun: entradas do bundle prefixadas, original no fim.
-        let value = format!("{APPDIR}/usr/lib/:{APPDIR}/usr/lib64/:/opt/cuda/lib64");
-        assert_eq!(
-            strip_appdir_entries(APPDIR, &value).as_deref(),
-            Some("/opt/cuda/lib64")
-        );
-    }
-
-    #[test]
-    fn some_quando_a_variavel_so_existia_por_causa_do_bundle() {
-        let value = format!("{APPDIR}/usr/share/pyshared/:");
-        assert_eq!(strip_appdir_entries(APPDIR, &value), None);
-    }
-
-    #[test]
-    fn nao_mexe_em_valor_sem_appdir() {
-        assert_eq!(
-            strip_appdir_entries(APPDIR, "/usr/share:/usr/local/share").as_deref(),
-            Some("/usr/share:/usr/local/share")
-        );
-    }
-}
