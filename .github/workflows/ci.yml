@@ -3,6 +3,9 @@ name: CI
 on:
   push:
     branches: [main, "feat/**"]
+    # Sem isto o workflow nunca via uma tag, e a condição `refs/tags/v` do job
+    # de bundle era código morto: `git push --tags` não disparava nada.
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
