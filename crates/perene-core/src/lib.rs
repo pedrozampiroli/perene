@@ -7,6 +7,7 @@
 use uuid::Uuid;
 
 pub mod harness;
+pub mod harness_env;
 pub mod history;
 pub mod models;
 pub mod paths;

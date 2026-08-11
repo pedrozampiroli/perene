@@ -5,6 +5,8 @@
 //! que atacha/detacha via IPC (JSON-lines) e recebe replay de scrollback no
 //! reattach. Single-instance garantido por lock exclusivo no lockfile (lição #2).
 
+pub mod acp;
+pub mod acp_client;
 pub mod pty;
 pub mod server;
 pub mod session;

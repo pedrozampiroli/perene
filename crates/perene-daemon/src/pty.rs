@@ -22,105 +22,16 @@ pub fn build_command(req: &SpawnRequest) -> CommandBuilder {
     cmd
 }
 
-/// Remove variáveis de ambiente de *sessão de harness* herdadas.
-///
-/// Se o Perene for aberto de dentro de uma sessão do Claude Code (ou de outro
-/// harness), o processo herda marcadores como `CLAUDE_CODE_CHILD_SESSION` e
-/// `CLAUDE_CODE_SESSION_ID`. Herdados pelo `claude` que abrimos no PTY, eles
-/// **desligam o salvamento do transcript** ("Transcript saving is off") e a
-/// conversa nunca é gravada em disco — então o `--resume` depois falha com
-/// "No conversation found with session ID". Os terminais precisam nascer limpos.
+/// Aplica as correções de ambiente do [`perene_core::harness_env`]: variáveis
+/// de sessão de harness herdadas e a poluição do AppImage. A lista é
+/// compartilhada com o modo ACP de propósito — os caminhos não podem divergir.
 fn sanitize_env(cmd: &mut CommandBuilder) {
-    const EXACT: &[&str] = &[
-        "CLAUDECODE",
-        "CLAUDE_PID",
-        "CLAUDE_EFFORT",
-        "CODEX_SANDBOX",
-        "CODEX_SESSION_ID",
-        "OPENCODE_SESSION_ID",
-    ];
-    for (key, _) in std::env::vars() {
-        let up = key.to_ascii_uppercase();
-        if up.starts_with("CLAUDE_CODE_") || EXACT.contains(&up.as_str()) {
-            cmd.env_remove(&key);
+    use perene_core::harness_env::EnvFix;
+    for fix in perene_core::harness_env::child_env_fixes() {
+        match fix {
+            EnvFix::Remove(key) => cmd.env_remove(&key),
+            EnvFix::Set(key, value) => cmd.env(&key, &value),
         }
-    }
-    sanitize_appimage_env(cmd);
-}
-
-/// Remove a poluição de ambiente que o `AppRun` do AppImage injeta.
-///
-/// O bundle Linux roda sob um `AppRun` que exporta `PYTHONHOME=$APPDIR/usr/`,
-/// `PERLLIB`, `QT_PLUGIN_PATH` e prefixos de `LD_LIBRARY_PATH`/`XDG_DATA_DIRS`
-/// apontando pra dentro do bundle. O processo do app **precisa** disso (o WebKit
-/// spawna `WebKitWebProcess`/`WebKitNetworkProcess`, que acham as libs
-/// empacotadas por ali) — mas o login shell não: com `PYTHONHOME` herdado,
-/// qualquer python do sistema morre com "Fatal Python error: failed to import
-/// encodings module". Por isso a limpeza é por filho, nunca global.
-///
-/// Fora de AppImage (`APPDIR` ausente) é no-op.
-#[cfg(target_os = "linux")]
-fn sanitize_appimage_env(cmd: &mut CommandBuilder) {
-    let appdir = match std::env::var("APPDIR") {
-        Ok(dir) if !dir.is_empty() => dir,
-        _ => return,
-    };
-
-    // Variáveis que o AppRun/hook do linuxdeploy criam do zero: some com elas.
-    const DROP: &[&str] = &[
-        "APPDIR",
-        "APPIMAGE",
-        "ARGV0",
-        "OWD",
-        "PYTHONHOME",
-        "GDK_BACKEND",
-        "GDK_PIXBUF_MODULE_FILE",
-        "GIO_EXTRA_MODULES",
-        "GTK_DATA_PREFIX",
-        "GTK_EXE_PREFIX",
-        "GTK_IM_MODULE_FILE",
-        "GTK_PATH",
-        "GTK_THEME",
-    ];
-    for key in DROP {
-        cmd.env_remove(key);
-    }
-
-    // Listas de caminhos: o AppRun prefixou as entradas do bundle e preservou o
-    // valor original no fim. Tira só o que aponta pro $APPDIR — o resto é do
-    // usuário e deve sobreviver.
-    const PATH_LISTS: &[&str] = &[
-        "GSETTINGS_SCHEMA_DIR",
-        "LD_LIBRARY_PATH",
-        "PERLLIB",
-        "PYTHONPATH",
-        "QT_PLUGIN_PATH",
-        "XDG_DATA_DIRS",
-    ];
-    for key in PATH_LISTS {
-        let Ok(value) = std::env::var(key) else { continue };
-        match strip_appdir_entries(&appdir, &value) {
-            Some(kept) => cmd.env(key, kept),
-            None => cmd.env_remove(key),
-        }
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn sanitize_appimage_env(_cmd: &mut CommandBuilder) {}
-
-/// Filtra de uma lista `a:b:c` as entradas que apontam pra dentro do `appdir`.
-/// Devolve `None` quando não sobra nada (a variável só existia por causa do bundle).
-#[cfg(target_os = "linux")]
-fn strip_appdir_entries(appdir: &str, value: &str) -> Option<String> {
-    let kept: Vec<&str> = value
-        .split(':')
-        .filter(|entry| !entry.is_empty() && !entry.starts_with(appdir))
-        .collect();
-    if kept.is_empty() {
-        None
-    } else {
-        Some(kept.join(":"))
     }
 }
 
@@ -183,35 +94,4 @@ fn home_dir() -> Option<String> {
     std::env::var("HOME")
         .ok()
         .or_else(|| std::env::var("USERPROFILE").ok())
-}
-
-#[cfg(all(test, target_os = "linux"))]
-mod tests {
-    use super::strip_appdir_entries;
-
-    const APPDIR: &str = "/tmp/.mount_PereneAbc123";
-
-    #[test]
-    fn preserva_o_valor_do_usuario_e_tira_o_do_bundle() {
-        // Formato real do AppRun: entradas do bundle prefixadas, original no fim.
-        let value = format!("{APPDIR}/usr/lib/:{APPDIR}/usr/lib64/:/opt/cuda/lib64");
-        assert_eq!(
-            strip_appdir_entries(APPDIR, &value).as_deref(),
-            Some("/opt/cuda/lib64")
-        );
-    }
-
-    #[test]
-    fn some_quando_a_variavel_so_existia_por_causa_do_bundle() {
-        let value = format!("{APPDIR}/usr/share/pyshared/:");
-        assert_eq!(strip_appdir_entries(APPDIR, &value), None);
-    }
-
-    #[test]
-    fn nao_mexe_em_valor_sem_appdir() {
-        assert_eq!(
-            strip_appdir_entries(APPDIR, "/usr/share:/usr/local/share").as_deref(),
-            Some("/usr/share:/usr/local/share")
-        );
-    }
 }

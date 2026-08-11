@@ -85,13 +85,15 @@ pub struct Tab {
     pub updated_at: i64,
 }
 
-/// Tipo de pane: terminal (default) ou visualizador de arquivos (M5).
+/// Tipo de pane: terminal (default), visualizador de arquivos (M5) ou sessão
+/// ACP — a mesma CLI, só que falando JSON-RPC em vez de desenhar uma TUI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PaneKind {
     #[default]
     Terminal,
     Files,
+    Acp,
 }
 
 /// Um terminal = uma sessão do daemon (indexada por `id`).
@@ -113,6 +115,11 @@ pub struct Pane {
     /// vez de criar uma nova.
     #[serde(default)]
     pub resume_existing: bool,
+    /// Quando presente, o pane **bifurca** a conversa desta sessão: nasce com o
+    /// histórico dela e segue independente. String vazia = "a mais recente deste
+    /// diretório" (codex/opencode não fixam id ao criar).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork_from_session_id: Option<String>,
     /// Caminho do dump de scrollback (resume pós-reboot, M4).
     #[serde(default)]
     pub scrollback_file: Option<String>,
@@ -275,6 +282,7 @@ impl Manifest {
             tool_profile_id: "shell".to_string(),
             working_directory: cwd.to_string(),
             harness_session_id: None,
+            fork_from_session_id: None,
             resume_existing: false,
             scrollback_file: None,
             created_at: now_millis(),

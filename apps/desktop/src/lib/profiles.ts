@@ -27,6 +27,51 @@ export function needsSessionId(profileId: string): boolean {
   return profileId === "claude";
 }
 
+/**
+ * A ferramenta sabe bifurcar uma conversa?
+ *
+ * As três CLIs de IA sabem, cada uma à sua maneira:
+ * `claude --resume <id> --fork-session`, `codex fork`, `opencode --fork`.
+ * O `shell` não tem conversa para bifurcar.
+ */
+export function supportsFork(profileId: string): boolean {
+  return profileId === "claude" || profileId === "codex" || profileId === "opencode";
+}
+
+/** Adapter ACP de uma ferramenta. `null` = só existe em modo terminal. */
+export interface AcpConfig {
+  program: string;
+  args: string[];
+}
+
+// Roda via `npx` de propósito: nada para instalar globalmente, e a versão
+// acompanha o adapter oficial.
+export function acpConfig(profileId: string): AcpConfig | null {
+  switch (profileId) {
+    case "claude":
+      return { program: "npx", args: ["-y", "@zed-industries/claude-agent-acp"] };
+    default:
+      return null;
+  }
+}
+
+export function supportsAcp(profileId: string): boolean {
+  return acpConfig(profileId) !== null;
+}
+
+/**
+ * Famílias de modelo do Claude, por **alias**.
+ *
+ * Alias não envelhece: `opus` sempre aponta para o Opus mais recente da conta.
+ * Um id fixo (`claude-opus-4-6`) apodrece — e é exatamente o que acontece com a
+ * lista que o adapter ACP anuncia, porque ele embute um SDK anterior ao Opus 5
+ * e chega a informar versões erradas ("Sonnet 4.6" para o alias `sonnet`).
+ *
+ * Família nova que não esteja aqui: o campo "Outro modelo…" aceita qualquer
+ * alias ou id completo.
+ */
+export const MODEL_ALIASES = ["opus", "sonnet", "haiku", "fable"] as const;
+
 function yoloFlag(profileId: string, on: boolean): string {
   if (!on) return "";
   switch (profileId) {
@@ -51,6 +96,8 @@ function yoloFlag(profileId: string, on: boolean): string {
  *    `opencode --continue`).
  *  - histórico (`pane.resumeExisting`): retoma uma sessão específica por id
  *    (`claude --resume <id>`, `codex resume <id>`, `opencode --session <id>`).
+ *  - `fork` (`pane.forkFromSessionId`): nasce com a conversa de outra sessão e
+ *    segue independente (`--fork-session`, `codex fork`, `--fork`).
  *
  * Nunca usa `claude --continue`.
  */
@@ -66,6 +113,28 @@ export function buildCommand(pane: Pane, settings: Settings, isFresh: boolean): 
   const claudeFresh = `claude --session-id ${id}${yolo}`;
   const codexFresh = `codex${yolo}`;
   const opencodeFresh = `opencode${yolo}`;
+
+  // Bifurcação: herda a conversa da origem e segue separada.
+  //
+  // Sem id de origem (codex/opencode não fixam um ao criar) usamos "a mais
+  // recente deste diretório" — mesma aproximação do resume pós-reboot.
+  const origem = pane.forkFromSessionId;
+  if (origem !== undefined && origem !== null) {
+    switch (p) {
+      case "claude":
+        return `claude --resume ${origem} --fork-session${yolo} || ${claudeFresh}`;
+      case "codex":
+        return origem
+          ? `codex fork ${origem}${yolo} || ${codexFresh}`
+          : `codex fork --last${yolo} || ${codexFresh}`;
+      case "opencode":
+        return origem
+          ? `opencode --session ${origem} --fork${yolo} || ${opencodeFresh}`
+          : `opencode --continue --fork${yolo} || ${opencodeFresh}`;
+      default:
+        return null;
+    }
+  }
 
   if (pane.resumeExisting) {
     // Aberto do histórico: retoma a sessão exata.

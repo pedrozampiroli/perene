@@ -2,6 +2,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AcpImage,
+  AcpMention,
   Commit,
   DirEntry,
   GitStatus,
@@ -75,15 +77,54 @@ export const api = {
     invoke<void>("mcp_set_enabled", { harness, name, enabled }),
   mcpCopyTo: (from: HarnessId, to: HarnessId, name: string) =>
     invoke<void>("mcp_copy_to", { from, to, name }),
-  skillsList: (project?: string) => invoke<Skill[]>("skills_list", { project }),
-  skillInstall: (source: string, project?: string) =>
-    invoke<Skill>("skill_install", { source, project }),
-  skillRemove: (path: string, project?: string) =>
-    invoke<void>("skill_remove", { path, project }),
+  skillsList: (harness: HarnessId, project?: string) =>
+    invoke<Skill[]>("skills_list", { harness, project }),
+  skillInstall: (harness: HarnessId, source: string, project?: string) =>
+    invoke<Skill>("skill_install", { harness, source, project }),
+  skillRemove: (harness: HarnessId, path: string, project?: string) =>
+    invoke<void>("skill_remove", { harness, path, project }),
 
   gitWorktreeList: (root: string) => invoke<Worktree[]>("git_worktree_list", { root }),
   gitWorktreeAdd: (root: string, path: string, branch: string, create: boolean) =>
     invoke<string>("git_worktree_add", { root, path, branch, create }),
   createProjectWorktree: (repo: string, base: string, name: string) =>
     invoke<string>("create_project_worktree", { repo, base, name }),
+
+  // Modo ACP — a sessão vive no daemon; `acpSpawn` também atacha (traz o replay).
+  acpSpawn: (
+    paneId: string,
+    cwd: string,
+    program: string,
+    args: string[],
+    allowTerminal: boolean,
+  ) => invoke<void>("acp_spawn", { paneId, cwd, program, args, allowTerminal }),
+  acpPrompt: (
+    paneId: string,
+    text: string,
+    images: AcpImage[] = [],
+    mentions: AcpMention[] = [],
+  ) => invoke<void>("acp_prompt", { paneId, text, images, mentions }),
+  acpCancel: (paneId: string) => invoke<void>("acp_cancel", { paneId }),
+  acpFork: (
+    paneId: string,
+    sourceSessionId: string,
+    cwd: string,
+    program: string,
+    args: string[],
+    allowTerminal: boolean,
+  ) =>
+    invoke<void>("acp_fork", {
+      paneId,
+      sourceSessionId,
+      cwd,
+      program,
+      args,
+      allowTerminal,
+    }),
+  acpSetMode: (paneId: string, modeId: string) =>
+    invoke<void>("acp_set_mode", { paneId, modeId }),
+  acpSetModel: (paneId: string, modelId: string) =>
+    invoke<void>("acp_set_model", { paneId, modelId }),
+  acpPermission: (paneId: string, requestId: number, optionId: string | null) =>
+    invoke<void>("acp_permission", { paneId, requestId, optionId }),
 };

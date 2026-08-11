@@ -5,11 +5,20 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { acp } from "./acp.svelte";
 import { api } from "./api";
 import { theme } from "./theme.svelte";
 import { i18n, detectLocale, t } from "./i18n.svelte";
 import { baseName, isInWorktree } from "./paths";
-import { PROFILES, buildCommand, needsSessionId } from "./profiles";
+import { worstState } from "./status";
+import {
+  PROFILES,
+  acpConfig,
+  buildCommand,
+  needsSessionId,
+  supportsAcp,
+  supportsFork,
+} from "./profiles";
 import type {
   LayoutNode,
   Manifest,
@@ -176,6 +185,8 @@ class AppStore {
     locale: "",
     onboardingDone: false,
     theme: "",
+    acpMode: false,
+    acpTerminal: true,
   });
   loaded = $state(false);
   activePaneId = $state<string | null>(null);
@@ -193,13 +204,34 @@ class AppStore {
     if (state === "idle") delete this.paneStatus[paneId];
     else this.paneStatus[paneId] = state;
   }
-  /** Estado "mais urgente" de uma aba (uma aba pode ter vários panes). */
+  /**
+   * Estado "mais urgente" de um conjunto de panes.
+   *
+   * A ordem é por **urgência**, não por gravidade: `waiting` vem antes de
+   * `running` porque é o único que precisa de você — o resto é informativo.
+   */
+  private worstOf(panes: Pane[]): PaneState | null {
+    return worstState(panes.map((p) => this.paneStatus[p.id]));
+  }
+
+  /** Estado de uma aba (uma aba pode ter vários panes). */
   tabStatus(tab: Tab): PaneState | null {
-    const order: PaneState[] = ["error", "waiting", "running", "done"];
-    for (const st of order) {
-      if (tab.panes.some((p) => this.paneStatus[p.id] === st)) return st;
-    }
-    return null;
+    return this.worstOf(tab.panes);
+  }
+
+  /** Estado de uma pasta: o mais urgente entre as abas dela. */
+  folderStatus(ws: Workspace, folderId: string): PaneState | null {
+    return this.worstOf(this.tabsInFolder(ws, folderId).flatMap((t) => t.panes));
+  }
+
+  /**
+   * Estado de um workspace inteiro.
+   *
+   * É o que dá valor ao indicador: o workspace que **não** está na tela é
+   * justamente aquele cuja sessão você esqueceu esperando aprovação.
+   */
+  workspaceStatus(ws: Workspace): PaneState | null {
+    return this.worstOf(ws.tabs.flatMap((t) => t.panes));
   }
 
   /** Callback do editor ativo pra abrir arquivo (path, linha). */
@@ -531,10 +563,15 @@ class AppStore {
       action: () => this.moveTab(id, f.id),
     }));
     const cwd = tab?.panes[0]?.workingDirectory;
+    // Fork só aparece onde faz sentido: shell e editor não têm conversa.
+    const podeBifurcar = tab?.panes.some((p) => supportsFork(p.toolProfileId)) ?? false;
     return [
       { label: t("menu.open"), action: () => this.selectTab(id) },
       { label: t("menu.rename"), action: () => this.openRenameModal("tab", id, tab?.title ?? "") },
       ...(cwd ? [{ label: t("menu.openEditorHere"), action: () => this.openFilesTab(cwd) }] : []),
+      { separator: true },
+      { label: t("menu.duplicate"), action: () => this.duplicateTab(id) },
+      ...(podeBifurcar ? [{ label: t("menu.fork"), action: () => this.forkTab(id) }] : []),
       { separator: true },
       ...(moves.length ? moves : []),
       ...(tab?.folderId ? [{ label: t("menu.moveToRoot"), action: () => this.moveTab(id, null) }] : []),
@@ -686,13 +723,16 @@ class AppStore {
   }
 
   private makePane(profileId: string, cwd: string): Pane {
+    // Modo ACP só vale para quem tem adapter; o resto continua no terminal.
+    const useAcp = this.settings.acpMode && supportsAcp(profileId);
     const pane: Pane = {
       id: newId("pane"),
-      kind: "terminal",
+      kind: useAcp ? "acp" : "terminal",
       toolProfileId: profileId,
       workingDirectory: cwd,
       harnessSessionId: needsSessionId(profileId) ? uuid() : null,
       resumeExisting: false,
+      forkFromSessionId: null,
       scrollbackFile: null,
       createdAt: now(),
       updatedAt: now(),
@@ -745,6 +785,130 @@ class AppStore {
       this.activeWorkspace?.directory ??
       this.home
     );
+  }
+
+  /**
+   * Bifurca a sessão de uma aba numa aba nova — CLI ou ACP.
+   *
+   * No CLI a bifurcação é uma flag da própria ferramenta
+   * (`--fork-session`, `codex fork`, `--fork`); no ACP é `session/fork`. Nos
+   * dois casos o resultado é o mesmo para quem usa: a conversa até aqui é
+   * herdada e as duas abas seguem separadas.
+   */
+  forkTab(tabId: string): void {
+    const ws = this.activeWorkspace;
+    const tab = ws?.tabs.find((t) => t.id === tabId);
+    const origem = tab?.panes.find((p) => supportsFork(p.toolProfileId));
+    if (!ws || !tab || !origem) return;
+    if (origem.kind === "acp") {
+      this.forkAcpTab(origem.id);
+      return;
+    }
+    // CLI: o pane novo nasce apontando para a sessão de origem. Sem id
+    // (codex/opencode não fixam um), string vazia = "a mais recente daqui".
+    const pane: Pane = {
+      ...this.makePane(origem.toolProfileId, origem.workingDirectory),
+      forkFromSessionId: origem.harnessSessionId ?? "",
+    };
+    this.openTabWith(ws, tab, pane, `${tab.title} (fork)`);
+  }
+
+  /** Aba nova com o mesmo perfil e diretório, conversa em branco. */
+  duplicateTab(tabId: string): void {
+    const ws = this.activeWorkspace;
+    const tab = ws?.tabs.find((t) => t.id === tabId);
+    const origem = tab?.panes[0];
+    if (!ws || !tab || !origem) return;
+    const pane =
+      origem.kind === "files"
+        ? this.makeFilesPane(origem.workingDirectory)
+        : this.makePane(origem.toolProfileId, origem.workingDirectory);
+    if (origem.kind === "acp") pane.kind = "acp";
+    this.openTabWith(ws, tab, pane, tab.title);
+  }
+
+  /** Cria a aba ao lado da original, já focada. */
+  private openTabWith(ws: Workspace, base: Tab, pane: Pane, title: string): void {
+    const tab: Tab = {
+      id: newId("tab"),
+      folderId: base.folderId ?? null,
+      title,
+      panes: [pane],
+      layout: leaf(pane.id),
+      activePaneId: pane.id,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    const at = ws.tabs.findIndex((t) => t.id === base.id);
+    ws.tabs.splice(at + 1, 0, tab);
+    ws.activeTabId = tab.id;
+    this.activePaneId = pane.id;
+    this.save();
+  }
+
+  /**
+   * Bifurca uma sessão ACP numa aba nova.
+   *
+   * A conversa até aqui é herdada; dali em diante as duas seguem separadas.
+   * Aba nova (e não substituir a atual) porque o ponto do fork é justamente
+   * comparar dois caminhos — é como o Claude Code desktop faz, e por isso o
+   * título ganha o sufixo.
+   */
+  forkAcpTab(paneId: string): void {
+    const ws = this.activeWorkspace;
+    const origem = this.findPane(paneId);
+    const sessionId = acp.get(paneId).sessionId;
+    if (!ws || !origem || !sessionId) return;
+
+    const cfg = acpConfig(origem.toolProfileId);
+    if (!cfg) return;
+
+    const pane: Pane = {
+      id: newId("pane"),
+      kind: "acp",
+      toolProfileId: origem.toolProfileId,
+      workingDirectory: origem.workingDirectory,
+      harnessSessionId: null, // o id vem do daemon quando o fork abre
+      resumeExisting: false,
+      forkFromSessionId: sessionId,
+      scrollbackFile: null,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    // NÃO entra em freshPanes: quem sobe este pane é o `acpFork`, não o
+    // `acpSpawn` que o AcpPane dispara ao montar.
+    this.forkPending.add(pane.id);
+
+    const atual = ws.tabs.find((t) => t.panes.some((p) => p.id === paneId));
+    if (!atual) return;
+    this.openTabWith(ws, atual, pane, `${atual.title} (fork)`);
+
+    void api
+      .acpFork(
+        pane.id,
+        sessionId,
+        origem.workingDirectory,
+        cfg.program,
+        cfg.args,
+        this.settings.acpTerminal,
+      )
+      .catch(() => {});
+  }
+
+  /** Panes cuja sessão o `acpFork` já subiu — o pane não deve spawnar de novo. */
+  private forkPending = new Set<string>();
+
+  /** Consome a marca: o `AcpPane` pergunta uma vez, ao montar. */
+  takeForkPending(paneId: string): boolean {
+    return this.forkPending.delete(paneId);
+  }
+
+  /** Guarda o id da sessão ACP no pane, para sobreviver ao reload da janela. */
+  rememberAcpSession(paneId: string, sessionId: string): void {
+    const pane = this.findPane(paneId);
+    if (!pane || !sessionId || pane.harnessSessionId === sessionId) return;
+    pane.harnessSessionId = sessionId;
+    this.save();
   }
 
   /** Abre o editor numa aba nova. Sem `dir`, usa o diretório do pane ATIVO —
@@ -912,6 +1076,17 @@ class AppStore {
     this.saveSettings();
   }
 
+  /** Vale para sessões NOVAS: as abertas seguem no modo em que nasceram. */
+  setAcpMode(v: boolean): void {
+    this.settings.acpMode = v;
+    this.saveSettings();
+  }
+
+  setAcpTerminal(v: boolean): void {
+    this.settings.acpTerminal = v;
+    this.saveSettings();
+  }
+
   /** Largura da sidebar (arrastar) — salva com debounce. */
   setSidebarWidth(px: number): void {
     this.settings.sidebarWidth = Math.max(160, Math.min(560, Math.round(px)));
@@ -1033,7 +1208,10 @@ class AppStore {
 
   // ── Internos ─────────────────────────────────────────────────────────────
   private killPane(paneId: string): void {
+    // O daemon resolve o tipo (PTY ou sessão ACP) pelo id.
     void invoke("terminal_kill", { paneId });
+    acp.forget(paneId);
+    delete this.paneStatus[paneId];
   }
 
   private syncActivePane(): void {
@@ -1058,6 +1236,9 @@ class AppStore {
     if (!ws) return;
     const pane: Pane = {
       id: newId("pane"),
+      // Sempre terminal, mesmo com o modo ACP ligado: retomar pelo id é um
+      // recurso da CLI (`claude --resume <id>`). Abrir como chat ACP começaria
+      // uma conversa nova sem avisar — o oposto do que o usuário pediu.
       kind: "terminal",
       toolProfileId: rec.harness,
       workingDirectory: rec.projectPath,

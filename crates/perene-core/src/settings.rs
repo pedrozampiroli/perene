@@ -39,6 +39,17 @@ pub struct Settings {
     /// que reproduz o visual que o app sempre teve.
     #[serde(default)]
     pub theme: String,
+    /// Abrir sessões novas em modo ACP (chat estruturado) em vez da CLI no
+    /// terminal. Só vale para as ferramentas que têm adapter; as demais seguem
+    /// no terminal. Desligado por padrão: o terminal é o modo consagrado.
+    #[serde(default)]
+    pub acp_mode: bool,
+    /// No modo ACP, deixar o agente pedir que o Perene rode comandos
+    /// (`terminal/*`). Os comandos rodam presos ao diretório da sessão e
+    /// aparecem no chat. Ligado por padrão: sem isso o agente não consegue
+    /// trabalhar (rodar teste, `git status`…).
+    #[serde(default = "default_true")]
+    pub acp_terminal: bool,
 }
 
 fn default_true() -> bool {
@@ -64,6 +75,8 @@ impl Default for Settings {
             locale: String::new(),
             onboarding_done: false,
             theme: String::new(),
+            acp_mode: false,
+            acp_terminal: true,
         }
     }
 }
@@ -118,6 +131,8 @@ mod tests {
             locale: "pt-BR".into(),
             onboarding_done: true,
             theme: "one-dark".into(),
+            acp_mode: true,
+            acp_terminal: false,
         };
         store.save(&s).unwrap();
         assert_eq!(store.load().unwrap(), s);

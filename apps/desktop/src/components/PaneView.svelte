@@ -2,12 +2,17 @@
   import { t } from "../lib/i18n.svelte";
   import { onMount, onDestroy } from "svelte";
   import { X, Code2 } from "@lucide/svelte";
-  import { isPermissionGranted, sendNotification } from "@tauri-apps/plugin-notification";
+  import {
+    isPermissionGranted,
+    requestPermission,
+    sendNotification,
+  } from "@tauri-apps/plugin-notification";
   import { PerenePane } from "../lib/terminal";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
   import { baseName } from "../lib/paths";
   import FilesPane from "./FilesPane.svelte";
+  import AcpPane from "./AcpPane.svelte";
   import ToolIcon from "./ToolIcon.svelte";
   import StatusDot from "./StatusDot.svelte";
 
@@ -22,6 +27,9 @@
 
   const data = $derived(app.findPane(paneId));
   const isFiles = $derived(data?.kind === "files");
+  const isAcp = $derived(data?.kind === "acp");
+  /** Só o pane de terminal tem xterm; os outros desenham o próprio conteúdo. */
+  const isTerm = $derived(!isFiles && !isAcp);
   const prof = $derived(profile(data?.toolProfileId ?? "shell"));
   const isActive = $derived(app.activePaneId === paneId);
   const dirLabel = $derived(baseName(data?.workingDirectory ?? "") || "~");
@@ -35,7 +43,13 @@
     lastBellAt = now;
     if (document.hasFocus() && isActive) return;
     try {
-      if (!(await isPermissionGranted())) return;
+      // Pedir aqui também, e não só no boot (`main.ts`): o pedido do boot é
+      // assíncrono e um bell pode chegar antes dele resolver — e se o usuário
+      // dispensou o prompt daquela vez, sem isto a notificação nunca mais
+      // apareceria, em silêncio.
+      if (!(await isPermissionGranted())) {
+        if ((await requestPermission()) !== "granted") return;
+      }
       sendNotification({
         title: app.findTabForPane(paneId)?.title || prof.label,
         body: t("notification.idleBody"),
@@ -47,7 +61,7 @@
 
   onMount(() => {
     const p = app.findPane(paneId);
-    if (!p || p.kind === "files") return; // pane de arquivos não abre PTY
+    if (!p || p.kind !== "terminal") return; // só o terminal abre PTY
     pane = new PerenePane(paneId, app.settings.fontSize);
     pane
       .open(container, {
@@ -63,12 +77,12 @@
   onDestroy(() => pane?.dispose());
 
   $effect(() => {
-    if (isActive && !isFiles) pane?.focus();
+    if (isActive && isTerm) pane?.focus();
   });
 
   function focusPane() {
     app.setActivePane(paneId);
-    if (!isFiles) pane?.focus();
+    if (isTerm) pane?.focus();
   }
 </script>
 
@@ -78,12 +92,15 @@
       {#if isFiles}<Code2 size={13} />{:else}<ToolIcon id={data?.toolProfileId ?? "shell"} size={13} />{/if}
     </span>
     <span class="label">{isFiles ? t("pane.editor") : prof.label}</span>
+    {#if isAcp}<span class="badge">{t("acp.badge")}</span>{/if}
     <span class="dir">{dirLabel}</span>
     <span class="pstatus" style="color:{prof.color}"><StatusDot state={app.paneStatus[paneId]} /></span>
     <button class="x" title={t("pane.close") + " (⌘W)"} onclick={() => app.confirmClosePane(paneId)}><X size={13} /></button>
   </div>
   {#if isFiles}
     <div class="term"><FilesPane {paneId} /></div>
+  {:else if isAcp}
+    <div class="chat"><AcpPane {paneId} /></div>
   {:else}
     <div class="term" bind:this={container}></div>
   {/if}
@@ -156,5 +173,20 @@
     min-height: 0;
     padding: 4px 6px;
     box-sizing: border-box;
+  }
+  /* O chat gerencia o próprio espaçamento (o composer encosta na borda). */
+  .chat {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .badge {
+    flex: 0 0 auto;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
+    line-height: 13px;
   }
 </style>

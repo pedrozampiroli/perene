@@ -1,7 +1,7 @@
 // Espelho TS do manifest v3 (perene-core::models). Wire em camelCase.
 
 export type Id = string;
-export type PaneKind = "terminal" | "files";
+export type PaneKind = "terminal" | "files" | "acp";
 export type SplitDirection = "horizontal" | "vertical";
 
 export type LayoutNode =
@@ -21,6 +21,8 @@ export interface Pane {
   workingDirectory: string;
   harnessSessionId?: string | null;
   resumeExisting: boolean;
+  /** Presente = o pane bifurca esta sessão. Vazio = a mais recente do diretório. */
+  forkFromSessionId?: string | null;
   scrollbackFile?: string | null;
   createdAt: number;
   updatedAt: number;
@@ -72,6 +74,10 @@ export interface Settings {
   locale: string; // "" = seguir o sistema
   onboardingDone: boolean;
   theme: string; // "" = tema embutido `dark-plus`
+  /** Abrir sessões novas como chat ACP (só as ferramentas com adapter). */
+  acpMode: boolean;
+  /** No modo ACP, deixar o agente pedir que o Perene rode comandos. */
+  acpTerminal: boolean;
 }
 
 // -- Temas -------------------------------------------------------------------
@@ -165,6 +171,8 @@ export interface Skill {
   description: string;
   path: string;
   projectScoped: boolean;
+  /** Veio de `.agents/skills`: mexer ali afeta codex E opencode. */
+  shared: boolean;
 }
 
 export interface ShellOption {
@@ -231,4 +239,76 @@ export interface Worktree {
   path: string;
   branch: string;
   head: string;
+}
+
+// ── Modo ACP ────────────────────────────────────────────────────────────────
+// Espelho de `perene_protocol::AcpEvent`. O `update` vem cru do agente (o
+// protocolo evolui mais rápido que a nossa UI), por isso é `unknown`.
+
+export interface AcpPermissionOption {
+  optionId: string;
+  name: string;
+  kind?: string | null;
+}
+
+export type AcpEvent =
+  | { kind: "ready"; sessionId: string; modes: AcpModes | null; models: AcpModels | null }
+  | {
+      kind: "terminal";
+      terminalId: string;
+      output: string;
+      truncated: boolean;
+      exitCode: number | null;
+    }
+  | { kind: "update"; update: Record<string, unknown> }
+  | {
+      kind: "permission";
+      requestId: number;
+      toolCall: Record<string, unknown>;
+      options: AcpPermissionOption[];
+    }
+  | { kind: "turnEnded"; stopReason: string }
+  | { kind: "failed"; message: string };
+
+export interface AcpMessage {
+  paneId: string;
+  event: AcpEvent;
+}
+
+/** Um modo de permissão (Default, Accept Edits, Plan…) ou modelo. */
+export interface AcpOption {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface AcpModes {
+  currentModeId: string;
+  availableModes: AcpOption[];
+}
+
+/** Modelos usam `modelId` em vez de `id` — normalizamos ao ler. */
+export interface AcpModels {
+  currentModelId: string;
+  availableModels: { modelId: string; name: string; description?: string | null }[];
+}
+
+/** Comando de barra anunciado pela sessão (`/context`, `/init`, skills…). */
+export interface AcpCommand {
+  name: string;
+  description: string;
+  /** `{ hint }` quando o comando aceita argumento. */
+  input?: { hint?: string | null } | null;
+}
+
+/** Arquivo mencionado com `@` — vai como link, não como conteúdo. */
+export interface AcpMention {
+  path: string;
+  name: string;
+}
+
+/** Imagem colada, indo junto do prompt. */
+export interface AcpImage {
+  dataB64: string;
+  mimeType: string;
 }
