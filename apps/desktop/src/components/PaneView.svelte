@@ -2,7 +2,11 @@
   import { t } from "../lib/i18n.svelte";
   import { onMount, onDestroy } from "svelte";
   import { X, Code2 } from "@lucide/svelte";
-  import { isPermissionGranted, sendNotification } from "@tauri-apps/plugin-notification";
+  import {
+    isPermissionGranted,
+    requestPermission,
+    sendNotification,
+  } from "@tauri-apps/plugin-notification";
   import { PerenePane } from "../lib/terminal";
   import { app } from "../lib/store.svelte";
   import { profile } from "../lib/profiles";
@@ -39,7 +43,13 @@
     lastBellAt = now;
     if (document.hasFocus() && isActive) return;
     try {
-      if (!(await isPermissionGranted())) return;
+      // Pedir aqui também, e não só no boot (`main.ts`): o pedido do boot é
+      // assíncrono e um bell pode chegar antes dele resolver — e se o usuário
+      // dispensou o prompt daquela vez, sem isto a notificação nunca mais
+      // apareceria, em silêncio.
+      if (!(await isPermissionGranted())) {
+        if ((await requestPermission()) !== "granted") return;
+      }
       sendNotification({
         title: app.findTabForPane(paneId)?.title || prof.label,
         body: t("notification.idleBody"),

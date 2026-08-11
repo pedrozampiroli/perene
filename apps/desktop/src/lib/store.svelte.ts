@@ -10,6 +10,7 @@ import { api } from "./api";
 import { theme } from "./theme.svelte";
 import { i18n, detectLocale, t } from "./i18n.svelte";
 import { baseName, isInWorktree } from "./paths";
+import { worstState } from "./status";
 import {
   PROFILES,
   acpConfig,
@@ -203,13 +204,34 @@ class AppStore {
     if (state === "idle") delete this.paneStatus[paneId];
     else this.paneStatus[paneId] = state;
   }
-  /** Estado "mais urgente" de uma aba (uma aba pode ter vários panes). */
+  /**
+   * Estado "mais urgente" de um conjunto de panes.
+   *
+   * A ordem é por **urgência**, não por gravidade: `waiting` vem antes de
+   * `running` porque é o único que precisa de você — o resto é informativo.
+   */
+  private worstOf(panes: Pane[]): PaneState | null {
+    return worstState(panes.map((p) => this.paneStatus[p.id]));
+  }
+
+  /** Estado de uma aba (uma aba pode ter vários panes). */
   tabStatus(tab: Tab): PaneState | null {
-    const order: PaneState[] = ["error", "waiting", "running", "done"];
-    for (const st of order) {
-      if (tab.panes.some((p) => this.paneStatus[p.id] === st)) return st;
-    }
-    return null;
+    return this.worstOf(tab.panes);
+  }
+
+  /** Estado de uma pasta: o mais urgente entre as abas dela. */
+  folderStatus(ws: Workspace, folderId: string): PaneState | null {
+    return this.worstOf(this.tabsInFolder(ws, folderId).flatMap((t) => t.panes));
+  }
+
+  /**
+   * Estado de um workspace inteiro.
+   *
+   * É o que dá valor ao indicador: o workspace que **não** está na tela é
+   * justamente aquele cuja sessão você esqueceu esperando aprovação.
+   */
+  workspaceStatus(ws: Workspace): PaneState | null {
+    return this.worstOf(ws.tabs.flatMap((t) => t.panes));
   }
 
   /** Callback do editor ativo pra abrir arquivo (path, linha). */

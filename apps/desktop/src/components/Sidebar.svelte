@@ -69,6 +69,7 @@
         tabindex="0"
       >
         <span class="name">{w.name}</span>
+        <span class="wstatus"><StatusDot state={app.workspaceStatus(w)} size={7} /></span>
         {#if app.manifest.workspaces.length > 1}
           <button class="mini" title={t("sidebar.removeWorkspace")} onclick={(e) => { e.stopPropagation(); app.confirmDeleteWorkspace(w.id); }}><X size={13} /></button>
         {/if}
@@ -122,6 +123,7 @@
             {#if folder.collapsed}<Folder size={14} class="ficon" />{:else}<FolderOpen size={14} class="ficon" />{/if}
             <span class="fname">{folder.name}</span>
             <span class="fcount">{app.tabsInFolder(ws, folder.id).length}</span>
+            <span class="fstatus"><StatusDot state={app.folderStatus(ws, folder.id)} size={7} /></span>
             <button
               class="mini"
               title={t("sidebar.newSessionInFolder")}
@@ -239,6 +241,19 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Indicadores de workspace e pasta: reservam a própria coluna para o nome não
+     dançar quando o estado aparece/some. */
+  .wstatus,
+  .fstatus {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    width: 9px;
+    margin-left: auto;
+  }
+  .fstatus {
+    margin-left: 0;
   }
   .fcount {
     font-size: 10px;
