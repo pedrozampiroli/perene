@@ -273,5 +273,7 @@
   "harness.installSkill": "Instalar de uma pasta…",
   "harness.noSkills": "Nenhuma skill instalada.",
   "harness.skillsClaudeOnly": "Skills são um recurso do Claude Code; esta ferramenta não tem equivalente.",
-  "harness.projectScope": "projeto"
+  "harness.projectScope": "projeto",
+  "harness.sharedSkill": "compartilhada",
+  "harness.sharedSkillHint": "Está em .agents/skills — Codex e OpenCode leem daí, então remover afeta as duas."
 }

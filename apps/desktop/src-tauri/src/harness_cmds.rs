@@ -86,17 +86,28 @@ fn project_path(p: &Option<String>) -> Option<PathBuf> {
 }
 
 #[tauri::command]
-pub fn skills_list(project: Option<String>) -> Vec<Skill> {
-    HarnessStore::at_home().list_skills(project_path(&project).as_deref())
+pub fn skills_list(harness: Harness, project: Option<String>) -> Vec<Skill> {
+    HarnessStore::at_home().list_skills(harness, project_path(&project).as_deref())
 }
 
 #[tauri::command]
-pub fn skill_install(source: String, project: Option<String>) -> Result<Skill, String> {
-    HarnessStore::at_home()
-        .install_skill(Path::new(&source), project_path(&project).as_deref())
+pub fn skill_install(
+    harness: Harness,
+    source: String,
+    project: Option<String>,
+) -> Result<Skill, String> {
+    HarnessStore::at_home().install_skill(
+        harness,
+        Path::new(&source),
+        project_path(&project).as_deref(),
+    )
 }
 
 #[tauri::command]
-pub fn skill_remove(path: String, project: Option<String>) -> Result<(), String> {
-    HarnessStore::at_home().remove_skill(Path::new(&path), project_path(&project).as_deref())
+pub fn skill_remove(harness: Harness, path: String, project: Option<String>) -> Result<(), String> {
+    HarnessStore::at_home().remove_skill(
+        harness,
+        Path::new(&path),
+        project_path(&project).as_deref(),
+    )
 }

@@ -77,11 +77,12 @@ export const api = {
     invoke<void>("mcp_set_enabled", { harness, name, enabled }),
   mcpCopyTo: (from: HarnessId, to: HarnessId, name: string) =>
     invoke<void>("mcp_copy_to", { from, to, name }),
-  skillsList: (project?: string) => invoke<Skill[]>("skills_list", { project }),
-  skillInstall: (source: string, project?: string) =>
-    invoke<Skill>("skill_install", { source, project }),
-  skillRemove: (path: string, project?: string) =>
-    invoke<void>("skill_remove", { path, project }),
+  skillsList: (harness: HarnessId, project?: string) =>
+    invoke<Skill[]>("skills_list", { harness, project }),
+  skillInstall: (harness: HarnessId, source: string, project?: string) =>
+    invoke<Skill>("skill_install", { harness, source, project }),
+  skillRemove: (harness: HarnessId, path: string, project?: string) =>
+    invoke<void>("skill_remove", { harness, path, project }),
 
   gitWorktreeList: (root: string) => invoke<Worktree[]>("git_worktree_list", { root }),
   gitWorktreeAdd: (root: string, path: string, branch: string, create: boolean) =>

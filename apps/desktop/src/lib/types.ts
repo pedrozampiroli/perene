@@ -171,6 +171,8 @@ export interface Skill {
   description: string;
   path: string;
   projectScoped: boolean;
+  /** Veio de `.agents/skills`: mexer ali afeta codex E opencode. */
+  shared: boolean;
 }
 
 export interface ShellOption {

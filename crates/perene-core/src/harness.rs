@@ -61,7 +61,7 @@ fn yes() -> bool {
     true
 }
 
-/// Uma skill do Claude Code (`SKILL.md` com frontmatter).
+/// Uma skill (`SKILL.md` com frontmatter).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Skill {
@@ -70,8 +70,13 @@ pub struct Skill {
     pub description: String,
     /// Diretório da skill.
     pub path: String,
-    /// `true` se está no projeto (`.claude/skills`), `false` se global.
+    /// `true` se está no diretório do projeto, `false` se global.
     pub project_scoped: bool,
+    /// `true` quando veio de `.agents/skills` — o diretório COMPARTILHADO, lido
+    /// por codex e opencode. A UI marca essas para o usuário saber que mexer
+    /// ali afeta mais de uma ferramenta.
+    #[serde(default)]
+    pub shared: bool,
 }
 
 /// Onde cada arquivo mora. `at_home()` dá os caminhos reais; os testes injetam.
@@ -80,9 +85,35 @@ pub struct HarnessPaths {
     pub claude_json: PathBuf,
     pub codex_toml: PathBuf,
     pub opencode_json: PathBuf,
-    pub claude_skills: PathBuf,
+    /// Raiz para montar os diretórios de skills globais (`$HOME`, ou o tempdir
+    /// nos testes).
+    pub skills_home: PathBuf,
     /// Onde guardamos os servidores desligados (dentro do NOSSO estado).
     pub disabled_store: PathBuf,
+}
+
+/// Subdiretório de skills **próprio** de cada ferramenta, relativo a uma raiz.
+///
+/// Confirmado nos binários instalados: o claude lê `.claude/skills`, o codex
+/// `$CODEX_HOME/skills` (padrão `~/.codex/skills`) e o opencode
+/// `.opencode/skills`.
+fn own_skills_dir(h: Harness) -> &'static str {
+    match h {
+        Harness::Claude => ".claude",
+        Harness::Codex => ".codex",
+        Harness::OpenCode => ".opencode",
+    }
+}
+
+/// Diretório de skills **compartilhado**, lido por codex e opencode.
+///
+/// É a convenção que permite uma skill servir as duas ferramentas sem cópia. O
+/// claude não lê daqui (só `.claude/skills`).
+const SHARED_SKILLS: &str = ".agents";
+
+/// `true` se a ferramenta também lê o diretório compartilhado.
+fn reads_shared_skills(h: Harness) -> bool {
+    !matches!(h, Harness::Claude)
 }
 
 impl HarnessPaths {
@@ -92,7 +123,7 @@ impl HarnessPaths {
             claude_json: home.join(".claude.json"),
             codex_toml: home.join(".codex").join("config.toml"),
             opencode_json: home.join(".config").join("opencode").join("opencode.json"),
-            claude_skills: home.join(".claude").join("skills"),
+            skills_home: home.clone(),
             disabled_store: crate::paths::state_dir().join("harness-disabled.json"),
         }
     }
@@ -456,21 +487,55 @@ impl HarnessStore {
         Ok(())
     }
 
-    // -- skills (só Claude tem o conceito) -----------------------------------
+    // -- skills ---------------------------------------------------------------
 
-    /// Skills globais (`~/.claude/skills`) e, se `project` for dado, também as
-    /// do projeto (`<project>/.claude/skills`).
-    pub fn list_skills(&self, project: Option<&Path>) -> Vec<Skill> {
-        let mut out = read_skills_dir(&self.paths.claude_skills, false);
+    /// Diretórios que uma ferramenta lê, com a origem de cada um.
+    ///
+    /// Cada ferramenta tem o seu (`.claude/skills`, `.codex/skills`,
+    /// `.opencode/skills`); codex e opencode leem **também** o compartilhado
+    /// `.agents/skills`, que é como uma skill serve as duas sem cópia.
+    fn skills_dirs(&self, h: Harness, project: Option<&Path>) -> Vec<(PathBuf, bool, bool)> {
+        // (caminho, é do projeto, é o compartilhado)
+        let mut raizes: Vec<(PathBuf, bool)> = vec![(self.paths.skills_home.clone(), false)];
         if let Some(p) = project {
-            out.extend(read_skills_dir(&p.join(".claude").join("skills"), true));
+            raizes.push((p.to_path_buf(), true));
+        }
+        let mut out = Vec::new();
+        for (raiz, do_projeto) in raizes {
+            out.push((
+                raiz.join(own_skills_dir(h)).join("skills"),
+                do_projeto,
+                false,
+            ));
+            if reads_shared_skills(h) {
+                out.push((raiz.join(SHARED_SKILLS).join("skills"), do_projeto, true));
+            }
+        }
+        out
+    }
+
+    /// Skills que a ferramenta enxerga: as globais e, com `project`, as do
+    /// projeto.
+    pub fn list_skills(&self, h: Harness, project: Option<&Path>) -> Vec<Skill> {
+        let mut out = Vec::new();
+        for (dir, do_projeto, compartilhado) in self.skills_dirs(h, project) {
+            out.extend(read_skills_dir(&dir, do_projeto, compartilhado));
         }
         out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         out
     }
 
     /// Instala uma skill copiando um diretório que contenha `SKILL.md`.
-    pub fn install_skill(&self, source: &Path, project: Option<&Path>) -> Result<Skill, String> {
+    ///
+    /// Para codex e opencode o destino é o **compartilhado** (`.agents/skills`):
+    /// instalar uma vez e as duas enxergarem é o comportamento útil; quem quiser
+    /// isolar move o diretório depois.
+    pub fn install_skill(
+        &self,
+        h: Harness,
+        source: &Path,
+        project: Option<&Path>,
+    ) -> Result<Skill, String> {
         if !source.join("SKILL.md").is_file() {
             return Err(format!("{} não tem SKILL.md", source.display()));
         }
@@ -478,30 +543,43 @@ impl HarnessStore {
             .file_name()
             .and_then(|n| n.to_str())
             .ok_or("diretório de origem sem nome")?;
-        let dest_root = match project {
-            Some(p) => p.join(".claude").join("skills"),
-            None => self.paths.claude_skills.clone(),
+        let compartilhado = reads_shared_skills(h);
+        let raiz = match project {
+            Some(p) => p.to_path_buf(),
+            None => self.paths.skills_home.clone(),
         };
+        let dest_root = raiz
+            .join(if compartilhado {
+                SHARED_SKILLS
+            } else {
+                own_skills_dir(h)
+            })
+            .join("skills");
         let dest = dest_root.join(name);
         if dest.exists() {
-            return Err(format!("já existe uma skill '{name}' em {}", dest_root.display()));
+            return Err(format!(
+                "já existe uma skill '{name}' em {}",
+                dest_root.display()
+            ));
         }
         copy_dir(source, &dest).map_err(|e| e.to_string())?;
-        read_skill(&dest, project.is_some()).ok_or_else(|| "SKILL.md ilegível após copiar".into())
+        read_skill(&dest, project.is_some(), compartilhado)
+            .ok_or_else(|| "SKILL.md ilegível após copiar".into())
     }
 
     /// Remove uma skill instalada. Só apaga dentro dos diretórios de skills —
     /// um caminho de fora é recusado, pra um bug de UI não virar `rm -rf` na
     /// árvore do usuário.
-    pub fn remove_skill(&self, path: &Path, project: Option<&Path>) -> Result<(), String> {
-        let allowed = [
-            Some(self.paths.claude_skills.clone()),
-            project.map(|p| p.join(".claude").join("skills")),
-        ];
-        let ok = allowed
+    pub fn remove_skill(
+        &self,
+        h: Harness,
+        path: &Path,
+        project: Option<&Path>,
+    ) -> Result<(), String> {
+        let ok = self
+            .skills_dirs(h, project)
             .iter()
-            .flatten()
-            .any(|root| path.starts_with(root) && path != root);
+            .any(|(root, _, _)| path.starts_with(root) && path != root);
         if !ok {
             return Err(format!(
                 "{} está fora dos diretórios de skills",
@@ -651,7 +729,7 @@ fn write_text_atomic(path: &Path, text: &str) -> Result<(), String> {
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
-fn read_skills_dir(dir: &Path, project_scoped: bool) -> Vec<Skill> {
+fn read_skills_dir(dir: &Path, project_scoped: bool, shared: bool) -> Vec<Skill> {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return vec![],
@@ -659,11 +737,11 @@ fn read_skills_dir(dir: &Path, project_scoped: bool) -> Vec<Skill> {
     entries
         .flatten()
         .filter(|e| e.path().is_dir())
-        .filter_map(|e| read_skill(&e.path(), project_scoped))
+        .filter_map(|e| read_skill(&e.path(), project_scoped, shared))
         .collect()
 }
 
-fn read_skill(dir: &Path, project_scoped: bool) -> Option<Skill> {
+fn read_skill(dir: &Path, project_scoped: bool, shared: bool) -> Option<Skill> {
     let md = std::fs::read_to_string(dir.join("SKILL.md")).ok()?;
     let (name, description) = parse_frontmatter(&md);
     Some(Skill {
@@ -676,6 +754,7 @@ fn read_skill(dir: &Path, project_scoped: bool) -> Option<Skill> {
         description: description.unwrap_or_default(),
         path: dir.to_string_lossy().to_string(),
         project_scoped,
+        shared,
     })
 }
 
@@ -736,7 +815,7 @@ mod tests {
             claude_json: p.join(".claude.json"),
             codex_toml: p.join(".codex/config.toml"),
             opencode_json: p.join(".config/opencode/opencode.json"),
-            claude_skills: p.join(".claude/skills"),
+            skills_home: p.to_path_buf(),
             disabled_store: p.join("perene2/harness-disabled.json"),
         })
     }
@@ -835,7 +914,8 @@ mod tests {
         s.set_enabled(Harness::Claude, "ctx7", false).unwrap();
         // sumiu do arquivo da ferramenta...
         let v: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&s.paths().claude_json).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(&s.paths().claude_json).unwrap())
+                .unwrap();
         assert!(v["mcpServers"].get("ctx7").is_none());
         // ...mas continua listado, marcado como desligado
         let listed = s.list_mcp(Harness::Claude).unwrap();
@@ -846,7 +926,11 @@ mod tests {
         s.set_enabled(Harness::Claude, "ctx7", true).unwrap();
         let listed = s.list_mcp(Harness::Claude).unwrap();
         assert!(listed[0].enabled);
-        assert_eq!(listed[0].args, vec!["-y", "server"], "args não podem se perder");
+        assert_eq!(
+            listed[0].args,
+            vec!["-y", "server"],
+            "args não podem se perder"
+        );
     }
 
     #[test]
@@ -907,7 +991,12 @@ mod tests {
         let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
         assert_eq!(
             keys,
-            vec!["numStartups", "installMethod", "autoCompactWindowsCache", "projects"],
+            vec![
+                "numStartups",
+                "installMethod",
+                "autoCompactWindowsCache",
+                "projects"
+            ],
             "a ordem das chaves do usuário mudou"
         );
         // O texto tem que ser idêntico, não só equivalente: é arquivo alheio.
@@ -917,7 +1006,10 @@ mod tests {
             depois.contains("0.40265999999974156"),
             "float perdeu precisão: {depois}"
         );
-        assert!(depois.contains("0.10416666666666667"), "float perdeu precisão");
+        assert!(
+            depois.contains("0.10416666666666667"),
+            "float perdeu precisão"
+        );
     }
 
     #[test]
@@ -931,8 +1023,14 @@ mod tests {
         s.remove_mcp(Harness::Codex, "ctx7").unwrap();
 
         let depois = std::fs::read_to_string(&s.paths().codex_toml).unwrap();
-        assert!(!depois.contains("mcp_servers"), "sobrou seção vazia: {depois}");
-        assert!(depois.contains("notifications"), "comeu a config do usuário");
+        assert!(
+            !depois.contains("mcp_servers"),
+            "sobrou seção vazia: {depois}"
+        );
+        assert!(
+            depois.contains("notifications"),
+            "comeu a config do usuário"
+        );
     }
 
     #[test]
@@ -969,7 +1067,7 @@ mod tests {
     fn skills_are_read_from_frontmatter() {
         let tmp = TempDir::new().unwrap();
         let s = store_in(&tmp);
-        let dir = s.paths().claude_skills.join("deploy");
+        let dir = s.paths().skills_home.join(".claude/skills/deploy");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("SKILL.md"),
@@ -977,7 +1075,7 @@ mod tests {
         )
         .unwrap();
 
-        let skills = s.list_skills(None);
+        let skills = s.list_skills(Harness::Claude, None);
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "deploy");
         assert_eq!(skills[0].description, "Sobe a app");
@@ -994,16 +1092,20 @@ mod tests {
         std::fs::write(src.join("SKILL.md"), "---\nname: minha-skill\n---\n").unwrap();
         std::fs::write(src.join("sub/extra.txt"), "x").unwrap();
 
-        let skill = s.install_skill(&src, None).unwrap();
+        let skill = s.install_skill(Harness::Claude, &src, None).unwrap();
         assert_eq!(skill.name, "minha-skill");
-        assert!(s.paths().claude_skills.join("minha-skill/sub/extra.txt").exists());
+        assert!(s
+            .paths()
+            .skills_home
+            .join(".claude/skills/minha-skill/sub/extra.txt")
+            .exists());
 
         // duas vezes não
-        assert!(s.install_skill(&src, None).is_err());
+        assert!(s.install_skill(Harness::Claude, &src, None).is_err());
 
         let vazio = tmp.path().join("vazio");
         std::fs::create_dir_all(&vazio).unwrap();
-        assert!(s.install_skill(&vazio, None).is_err());
+        assert!(s.install_skill(Harness::Claude, &vazio, None).is_err());
     }
 
     #[test]
@@ -1013,10 +1115,11 @@ mod tests {
         let fora = tmp.path().join("projeto-importante");
         std::fs::create_dir_all(&fora).unwrap();
 
-        assert!(s.remove_skill(&fora, None).is_err());
+        assert!(s.remove_skill(Harness::Claude, &fora, None).is_err());
         assert!(fora.exists(), "não pode ter apagado nada");
         // o próprio diretório de skills também não
-        assert!(s.remove_skill(&s.paths().claude_skills, None).is_err());
+        let raiz = s.paths().skills_home.join(".claude/skills");
+        assert!(s.remove_skill(Harness::Claude, &raiz, None).is_err());
     }
 
     #[test]
@@ -1028,9 +1131,104 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("SKILL.md"), "---\nname: local\n---\n").unwrap();
 
-        assert!(s.list_skills(None).is_empty());
-        let with_project = s.list_skills(Some(&proj));
+        assert!(s.list_skills(Harness::Claude, None).is_empty());
+        let with_project = s.list_skills(Harness::Claude, Some(&proj));
         assert_eq!(with_project.len(), 1);
         assert!(with_project[0].project_scoped);
+    }
+
+    /// Cria uma skill mínima em `<raiz>/<sub>/skills/<nome>`.
+    fn skill_em(raiz: &Path, sub: &str, nome: &str) {
+        let dir = raiz.join(sub).join("skills").join(nome);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("SKILL.md"), format!("---\nname: {nome}\n---\n")).unwrap();
+    }
+
+    #[test]
+    fn codex_and_opencode_also_read_the_shared_agents_dir() {
+        // A skill em `.agents/skills` serve as duas ferramentas sem cópia — foi
+        // por não ler daqui que a lista aparecia vazia para elas.
+        let tmp = TempDir::new().unwrap();
+        let s = store_in(&tmp);
+        let home = s.paths().skills_home.clone();
+        skill_em(&home, ".agents", "compartilhada");
+
+        for h in [Harness::Codex, Harness::OpenCode] {
+            let nomes: Vec<_> = s.list_skills(h, None).into_iter().map(|k| k.name).collect();
+            assert_eq!(nomes, vec!["compartilhada"], "{h:?} devia enxergar");
+        }
+        // O claude não lê daqui: só `.claude/skills`.
+        assert!(s.list_skills(Harness::Claude, None).is_empty());
+    }
+
+    #[test]
+    fn each_tool_also_reads_its_own_dir() {
+        let tmp = TempDir::new().unwrap();
+        let s = store_in(&tmp);
+        let home = s.paths().skills_home.clone();
+        skill_em(&home, ".claude", "so-claude");
+        skill_em(&home, ".codex", "so-codex");
+        skill_em(&home, ".opencode", "so-opencode");
+
+        let nomes =
+            |h| -> Vec<String> { s.list_skills(h, None).into_iter().map(|k| k.name).collect() };
+        assert_eq!(nomes(Harness::Claude), vec!["so-claude"]);
+        assert_eq!(nomes(Harness::Codex), vec!["so-codex"]);
+        assert_eq!(nomes(Harness::OpenCode), vec!["so-opencode"]);
+    }
+
+    #[test]
+    fn shared_skills_are_flagged_so_the_ui_can_warn() {
+        // Mexer numa skill de `.agents/skills` afeta mais de uma ferramenta; a
+        // UI precisa saber disso para avisar antes de remover.
+        let tmp = TempDir::new().unwrap();
+        let s = store_in(&tmp);
+        let home = s.paths().skills_home.clone();
+        skill_em(&home, ".agents", "compartilhada");
+        skill_em(&home, ".codex", "propria");
+
+        let skills = s.list_skills(Harness::Codex, None);
+        let compartilhada = skills.iter().find(|k| k.name == "compartilhada").unwrap();
+        let propria = skills.iter().find(|k| k.name == "propria").unwrap();
+        assert!(compartilhada.shared);
+        assert!(!propria.shared);
+    }
+
+    #[test]
+    fn installing_for_codex_lands_in_the_shared_dir() {
+        // Instalar uma vez e as duas ferramentas enxergarem é o comportamento
+        // útil; por isso o destino padrão delas é o compartilhado.
+        let tmp = TempDir::new().unwrap();
+        let s = store_in(&tmp);
+        let src = tmp.path().join("origem/nova");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("SKILL.md"), "---\nname: nova\n---\n").unwrap();
+
+        let skill = s.install_skill(Harness::Codex, &src, None).unwrap();
+        assert!(skill.shared);
+        assert!(s.paths().skills_home.join(".agents/skills/nova").exists());
+        // E o opencode já enxerga, sem instalar de novo.
+        assert!(s
+            .list_skills(Harness::OpenCode, None)
+            .iter()
+            .any(|k| k.name == "nova"));
+    }
+
+    #[test]
+    fn remove_accepts_the_shared_dir_but_still_refuses_outside() {
+        let tmp = TempDir::new().unwrap();
+        let s = store_in(&tmp);
+        let home = s.paths().skills_home.clone();
+        skill_em(&home, ".agents", "descartavel");
+        let alvo = home.join(".agents/skills/descartavel");
+
+        // Fora continua recusado, mesmo para uma ferramenta que lê o compartilhado.
+        let fora = tmp.path().join("importante");
+        std::fs::create_dir_all(&fora).unwrap();
+        assert!(s.remove_skill(Harness::Codex, &fora, None).is_err());
+        assert!(fora.exists());
+
+        s.remove_skill(Harness::Codex, &alvo, None).unwrap();
+        assert!(!alvo.exists());
     }
 }

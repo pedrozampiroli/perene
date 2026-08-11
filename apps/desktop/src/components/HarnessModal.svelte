@@ -33,11 +33,25 @@
 
   onMount(refresh);
 
+  // Cada ferramenta lê diretórios diferentes, então trocar de aba precisa
+  // recarregar — senão a lista fica congelada na primeira.
+  $effect(() => {
+    void reloadSkills(tab);
+  });
+
+  async function reloadSkills(h: HarnessId): Promise<void> {
+    try {
+      skills = await api.skillsList(h, projectRoot || undefined);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   async function refresh(): Promise<void> {
     error = "";
     try {
       harnesses = await api.harnessList();
-      skills = await api.skillsList(projectRoot || undefined);
+      await reloadSkills(tab);
     } catch (e) {
       error = String(e);
     }
@@ -90,7 +104,7 @@
   async function installSkill(): Promise<void> {
     const picked = await open({ directory: true, multiple: false });
     if (typeof picked !== "string") return;
-    await run(() => api.skillInstall(picked, projectRoot || undefined));
+    await run(() => api.skillInstall(tab, picked, projectRoot || undefined));
   }
 
   /** Para onde este servidor ainda pode ser copiado. */
@@ -217,6 +231,11 @@
                   <div class="n">
                     {sk.name}
                     {#if sk.projectScoped}<span class="badge">{t("harness.projectScope")}</span>{/if}
+                    {#if sk.shared}
+                      <span class="badge shared" title={t("harness.sharedSkillHint")}>
+                        {t("harness.sharedSkill")}
+                      </span>
+                    {/if}
                   </div>
                   <div class="c">{sk.description || sk.path}</div>
                 </div>
@@ -224,7 +243,7 @@
                   class="icon danger"
                   title={t("confirm.delete")}
                   disabled={busy}
-                  onclick={() => run(() => api.skillRemove(sk.path, projectRoot || undefined))}
+                  onclick={() => run(() => api.skillRemove(tab, sk.path, projectRoot || undefined))}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -381,6 +400,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Compartilhada: cor diferente da de projeto, porque o aviso é outro —
+     "isto afeta outra ferramenta", não "isto é só deste repositório". */
+  .badge.shared {
+    background: color-mix(in srgb, var(--warning) 18%, transparent);
+    border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+    color: var(--warning);
   }
   .badge {
     font-size: 10px;
