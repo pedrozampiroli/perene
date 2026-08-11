@@ -307,6 +307,14 @@ impl HarnessStore {
     // os casos, o resto do arquivo do usuário é preservado byte a byte pelo
     // round-trip de Value.
 
+    /// Reescreve **só** a chave de MCP, deixando o resto do arquivo como texto.
+    ///
+    /// O truque é o `RawValue`: o nível de cima é lido como `nome → texto cru`,
+    /// então tudo que não é nosso volta pro disco byte a byte. Sem isso, o
+    /// round-trip por `Value` mexia no arquivo do usuário de dois jeitos:
+    /// alfabetizava as chaves e alterava floats longos em 1 ULP
+    /// (`0.40265999999974156` → `0.4026599999997416`) — porque f64 não
+    /// representa aquele texto exatamente, e o serde regrava o que coube.
     fn write_json_key(
         path: &Path,
         key: &str,
@@ -314,22 +322,50 @@ impl HarnessStore {
         remove: bool,
         to_value: fn(&McpServer) -> serde_json::Value,
     ) -> Result<(), String> {
-        let mut root = Self::read_json(path)?;
-        if !root.is_object() {
-            return Err(format!("{}: raiz não é um objeto JSON", path.display()));
-        }
-        let obj = root.as_object_mut().unwrap();
-        let entry = obj
-            .entry(key.to_string())
-            .or_insert_with(|| serde_json::Value::Object(Default::default()));
-        let map = entry
-            .as_object_mut()
-            .ok_or_else(|| format!("{}: '{key}' não é um objeto", path.display()))?;
+        use serde_json::value::RawValue;
+
+        // IndexMap, não serde_json::Map: este último só existe para `Value`, e
+        // aqui o valor é texto cru. Ordem de inserção = ordem do arquivo.
+        type RawMap = indexmap::IndexMap<String, Box<RawValue>>;
+
+        let mut root: RawMap = match std::fs::read_to_string(path) {
+            Ok(raw) if !raw.trim().is_empty() => {
+                serde_json::from_str(&raw).map_err(|e| format!("{}: {e}", path.display()))?
+            }
+            Ok(_) => RawMap::new(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => RawMap::new(),
+            Err(e) => return Err(format!("{}: {e}", path.display())),
+        };
+
+        // Só a nossa chave é desserializada de verdade.
+        let mut servers: serde_json::Map<String, serde_json::Value> = match root.get(key) {
+            Some(raw) => serde_json::from_str(raw.get())
+                .map_err(|_| format!("{}: '{key}' não é um objeto", path.display()))?,
+            None => Default::default(),
+        };
+
         if remove {
-            map.remove(&server.name);
+            servers.remove(&server.name);
         } else {
-            map.insert(server.name.clone(), to_value(server));
+            servers.insert(server.name.clone(), to_value(server));
         }
+
+        if servers.is_empty() {
+            // Ausente e vazio significam a mesma coisa para as três CLIs, e
+            // deixar `"mcpServers": {}` num arquivo que não tinha a chave é
+            // sujeira nossa em arquivo alheio.
+            //
+            // `shift_remove`, não `remove`: o segundo é swap-remove e jogaria a
+            // última chave do arquivo para o buraco — reordenando exatamente o
+            // que este método existe para preservar.
+            root.shift_remove(key);
+        } else {
+            let encoded = serde_json::to_string(&serde_json::Value::Object(servers))
+                .map_err(|e| e.to_string())?;
+            let raw = RawValue::from_string(encoded).map_err(|e| e.to_string())?;
+            root.insert(key.to_string(), raw);
+        }
+
         crate::store::write_json_atomic(path, &root).map_err(|e| e.to_string())
     }
 
@@ -375,6 +411,12 @@ impl HarnessStore {
                 servers.remove(&server.name);
             } else {
                 servers.insert(server.name.clone(), codex_value(server));
+            }
+            // Mesma regra do JSON: seção vazia é igual a seção ausente, e não
+            // deixamos `[mcp_servers]` de lembrança no arquivo do usuário.
+            let ficou_vazia = servers.is_empty();
+            if ficou_vazia {
+                root.remove("mcp_servers");
             }
         }
 
@@ -815,6 +857,82 @@ mod tests {
         s.set_enabled(Harness::Claude, "ctx7", false).unwrap();
         s.remove_mcp(Harness::Claude, "ctx7").unwrap();
         assert!(s.list_mcp(Harness::Claude).unwrap().is_empty());
+    }
+
+    /// Um ciclo completo (add → desliga → liga → remove) tem que devolver o
+    /// arquivo do usuário EXATAMENTE como estava — mesmo texto, byte a byte.
+    ///
+    /// Pegou três coisas que o fixture curto não pegava, todas contra o
+    /// ~/.claude.json real de 42 KB: as chaves saíam alfabetizadas, os floats
+    /// longos voltavam com 1 ULP de diferença, e sobrava um `"mcpServers": {}`
+    /// num arquivo que não tinha a chave.
+    #[test]
+    fn full_cycle_leaves_the_user_file_byte_identical() {
+        let tmp = TempDir::new().unwrap();
+        let s = store_in(&tmp);
+
+        // Ordem NÃO alfabética + float com mais dígitos do que f64 representa,
+        // que é o formato real do arquivo do Claude Code.
+        let original = concat!(
+            "{\n",
+            "  \"numStartups\": 42,\n",
+            "  \"installMethod\": \"native\",\n",
+            "  \"autoCompactWindowsCache\": {},\n",
+            "  \"projects\": {\n",
+            "    \"/home/user\": {\n",
+            "      \"allowedTools\": [],\n",
+            "      \"lastSessionMetrics\": {\n",
+            "        \"frame_duration_ms_p50\": 0.40265999999974156,\n",
+            "        \"hook_duration_ms_avg\": 0.10416666666666667\n",
+            "      }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        std::fs::write(&s.paths().claude_json, original).unwrap();
+
+        s.upsert_mcp(Harness::Claude, &sample("ctx7")).unwrap();
+        s.set_enabled(Harness::Claude, "ctx7", false).unwrap();
+        s.set_enabled(Harness::Claude, "ctx7", true).unwrap();
+        s.remove_mcp(Harness::Claude, "ctx7").unwrap();
+
+        let depois = std::fs::read_to_string(&s.paths().claude_json).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&depois).unwrap();
+
+        assert!(
+            v.get("mcpServers").is_none(),
+            "não pode sobrar mcpServers vazio: {depois}"
+        );
+        // ordem preservada
+        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(
+            keys,
+            vec!["numStartups", "installMethod", "autoCompactWindowsCache", "projects"],
+            "a ordem das chaves do usuário mudou"
+        );
+        // O texto tem que ser idêntico, não só equivalente: é arquivo alheio.
+        assert_eq!(depois.trim(), original.trim(), "o arquivo do usuário mudou");
+        // floats intactos, no texto
+        assert!(
+            depois.contains("0.40265999999974156"),
+            "float perdeu precisão: {depois}"
+        );
+        assert!(depois.contains("0.10416666666666667"), "float perdeu precisão");
+    }
+
+    #[test]
+    fn codex_removal_does_not_leave_an_empty_table() {
+        let tmp = TempDir::new().unwrap();
+        let s = store_in(&tmp);
+        std::fs::create_dir_all(s.paths().codex_toml.parent().unwrap()).unwrap();
+        std::fs::write(&s.paths().codex_toml, "[tui]\nnotifications = true\n").unwrap();
+
+        s.upsert_mcp(Harness::Codex, &sample("ctx7")).unwrap();
+        s.remove_mcp(Harness::Codex, "ctx7").unwrap();
+
+        let depois = std::fs::read_to_string(&s.paths().codex_toml).unwrap();
+        assert!(!depois.contains("mcp_servers"), "sobrou seção vazia: {depois}");
+        assert!(depois.contains("notifications"), "comeu a config do usuário");
     }
 
     #[test]
