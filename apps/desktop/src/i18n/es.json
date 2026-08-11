@@ -114,6 +114,8 @@
   "acp.thinking": "Razonamiento",
   "acp.mode": "Modo de permisos",
   "acp.model": "Modelo",
+  "acp.fork": "Fork",
+  "acp.forkHint": "Bifurcar esta conversación en una pestaña nueva",
   "acp.contextUsed": "Contexto usado",
   "acp.noOutput": "(sin salida)",
   "acp.waitingOutput": "esperando salida…",

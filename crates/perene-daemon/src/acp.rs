@@ -303,6 +303,43 @@ impl AcpManager {
         args: &[String],
         allow_terminal: bool,
     ) {
+        self.start(pane_id, cwd, program, args, allow_terminal, None);
+    }
+
+    /// Bifurca uma conversa num pane novo.
+    ///
+    /// O pane novo sobe o **próprio** adapter e pede o fork da conversa de
+    /// origem: o adapter a lê do transcript em disco, então não precisamos
+    /// compartilhar processo entre panes — cada um segue dono do seu.
+    pub fn fork(
+        &self,
+        pane_id: &str,
+        source_session_id: &str,
+        cwd: &str,
+        program: &str,
+        args: &[String],
+        allow_terminal: bool,
+    ) {
+        self.start(
+            pane_id,
+            cwd,
+            program,
+            args,
+            allow_terminal,
+            Some(source_session_id.to_string()),
+        );
+    }
+
+    /// Sobe o adapter e abre a sessão — nova, ou bifurcada de `fork_from`.
+    fn start(
+        &self,
+        pane_id: &str,
+        cwd: &str,
+        program: &str,
+        args: &[String],
+        allow_terminal: bool,
+        fork_from: Option<String>,
+    ) {
         let session = {
             let mut sessions = self.sessions.lock();
             if sessions.contains_key(pane_id) {
@@ -349,7 +386,11 @@ impl AcpManager {
                 session.set_state(PaneState::Error);
                 return;
             }
-            match agent.new_session(&cwd) {
+            let aberta = match &fork_from {
+                Some(origem) => agent.fork_session(origem, &cwd),
+                None => agent.new_session(&cwd),
+            };
+            match aberta {
                 Ok(novo) => {
                     *session.session_id.lock() = Some(novo.session_id);
                     // A partir daqui a saída dos comandos que rodarmos vai para
@@ -366,6 +407,7 @@ impl AcpManager {
                             });
                         }));
                     session.emit(AcpEvent::Ready {
+                        session_id: session.session_id.lock().clone().unwrap_or_default(),
                         modes: novo.modes,
                         models: novo.models,
                     });
@@ -704,6 +746,7 @@ mod tests {
             .lock()
             .insert("pane_1".into(), Arc::clone(&session));
         session.emit(AcpEvent::Ready {
+            session_id: "sess_teste".into(),
             modes: json!({}),
             models: json!({}),
         });

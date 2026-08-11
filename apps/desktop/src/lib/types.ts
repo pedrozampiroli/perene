@@ -154,7 +154,7 @@ export interface AcpPermissionOption {
 }
 
 export type AcpEvent =
-  | { kind: "ready"; modes: AcpModes | null; models: AcpModels | null }
+  | { kind: "ready"; sessionId: string; modes: AcpModes | null; models: AcpModels | null }
   | {
       kind: "terminal";
       terminalId: string;

@@ -237,6 +237,22 @@ impl Agent {
         serde_json::from_value(v).map_err(|e| RpcError::internal(e.to_string()))
     }
 
+    /// Bifurca uma sessão: a nova nasce com a conversa da original até aqui, e
+    /// dali em diante as duas seguem caminhos independentes.
+    ///
+    /// Não é comando de barra (por isso não aparece na lista de `/`): é método
+    /// do protocolo. O `session_id` é o da conversa de ORIGEM; o adapter a lê do
+    /// transcript em disco, então dá para bifurcar de um processo novo — que é
+    /// como o Perene faz, um adapter por pane.
+    pub fn fork_session(&self, session_id: &str, cwd: &str) -> Result<NewSessionResult, RpcError> {
+        let v = self.conn.request(
+            "session/fork",
+            json!({ "sessionId": session_id, "cwd": cwd, "mcpServers": [] }),
+            CONTROL_TIMEOUT,
+        )?;
+        serde_json::from_value(v).map_err(|e| RpcError::internal(e.to_string()))
+    }
+
     /// Troca o modo de permissão da sessão (Default, Accept Edits, Plan…).
     pub fn set_mode(&self, session_id: &str, mode_id: &str) -> Result<(), RpcError> {
         self.conn.request(

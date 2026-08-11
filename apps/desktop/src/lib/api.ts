@@ -77,6 +77,22 @@ export const api = {
     mentions: AcpMention[] = [],
   ) => invoke<void>("acp_prompt", { paneId, text, images, mentions }),
   acpCancel: (paneId: string) => invoke<void>("acp_cancel", { paneId }),
+  acpFork: (
+    paneId: string,
+    sourceSessionId: string,
+    cwd: string,
+    program: string,
+    args: string[],
+    allowTerminal: boolean,
+  ) =>
+    invoke<void>("acp_fork", {
+      paneId,
+      sourceSessionId,
+      cwd,
+      program,
+      args,
+      allowTerminal,
+    }),
   acpSetMode: (paneId: string, modeId: string) =>
     invoke<void>("acp_set_mode", { paneId, modeId }),
   acpSetModel: (paneId: string, modelId: string) =>

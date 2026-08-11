@@ -740,3 +740,74 @@ fn spawn_failure_reaches_the_client() {
         "o erro devia dizer qual programa faltou: {evs:?}"
     );
 }
+
+#[test]
+fn forking_opens_an_independent_session_from_the_original() {
+    // O fork não é comando de barra: é `session/fork`, método do protocolo. No
+    // Perene ele vira uma aba nova — a conversa até ali é herdada, e dali em
+    // diante as duas seguem separadas. Este teste prova as duas metades.
+    let dir = tempfile::tempdir().unwrap();
+    let endpoint = start_daemon(dir.path());
+
+    let mut c = LineClient::connect(&endpoint).unwrap();
+    hello(&mut c);
+    spawn_fake_agent(&mut c, "pane_origem", dir.path());
+
+    let evs = c.collect_acp(Duration::from_secs(10), |evs| {
+        evs.iter().any(|e| matches!(e, AcpEvent::Ready { .. }))
+    });
+    let origem = evs
+        .iter()
+        .find_map(|e| match e {
+            AcpEvent::Ready { session_id, .. } => Some(session_id.clone()),
+            _ => None,
+        })
+        .expect("a sessão de origem devia informar o id");
+    assert!(!origem.is_empty(), "sem id não há como bifurcar");
+
+    c.send(&ClientMessage::AcpFork {
+        pane_id: "pane_fork".into(),
+        source_session_id: origem.clone(),
+        cwd: dir.path().to_string_lossy().to_string(),
+        program: env!("CARGO_BIN_EXE_perene-fake-acp-agent").to_string(),
+        args: Vec::new(),
+        allow_terminal: false,
+    });
+    c.send(&ClientMessage::Attach {
+        pane_id: "pane_fork".into(),
+    });
+
+    let evs = c.collect_acp(Duration::from_secs(10), |evs| {
+        evs.iter().any(|e| matches!(e, AcpEvent::Ready { .. }))
+    });
+    let bifurcada = evs
+        .iter()
+        .find_map(|e| match e {
+            AcpEvent::Ready { session_id, .. } => Some(session_id.clone()),
+            _ => None,
+        })
+        .expect("o fork devia abrir e reportar a sessão nova");
+    assert_eq!(
+        bifurcada,
+        format!("fork_de_{origem}"),
+        "a sessão nova precisa derivar da original"
+    );
+    assert_ne!(
+        bifurcada, origem,
+        "senão as duas abas dividiriam a conversa"
+    );
+
+    // Os dois panes coexistem: bifurcar não fecha o original.
+    c.send(&ClientMessage::ListPanes);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut panes = None;
+    while Instant::now() < deadline && panes.is_none() {
+        if let Some(DaemonMessage::Panes { panes: p }) = c.next_msg(deadline) {
+            panes = Some(p);
+        }
+    }
+    let panes = panes.expect("ListPanes devia responder");
+    let ids: Vec<_> = panes.iter().map(|p| p.pane_id.as_str()).collect();
+    assert!(ids.contains(&"pane_origem"), "o original some? {ids:?}");
+    assert!(ids.contains(&"pane_fork"), "o fork não entrou: {ids:?}");
+}

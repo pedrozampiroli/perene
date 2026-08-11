@@ -103,7 +103,12 @@ pub struct PaneStatus {
 pub enum AcpEvent {
     /// Sessão pronta para receber prompts. Traz os modos de permissão e os
     /// modelos que a sessão oferece — quem define a lista é o agente.
+    #[serde(rename_all = "camelCase")]
     Ready {
+        /// Id da sessão no agente. A UI guarda no pane para poder bifurcar
+        /// depois — e, um dia, retomar.
+        #[serde(default)]
+        session_id: String,
         #[serde(default)]
         modes: serde_json::Value,
         #[serde(default)]
@@ -234,6 +239,20 @@ pub enum ClientMessage {
     /// Interrompe o turno atual.
     #[serde(rename_all = "camelCase")]
     AcpCancel { pane_id: PaneId },
+    /// Bifurca uma sessão existente num pane novo.
+    ///
+    /// `source_session_id` é a conversa de origem; o pane novo sobe o próprio
+    /// adapter e pede o fork — as duas conversas seguem independentes.
+    #[serde(rename_all = "camelCase")]
+    AcpFork {
+        pane_id: PaneId,
+        source_session_id: String,
+        cwd: String,
+        program: String,
+        args: Vec<String>,
+        #[serde(default)]
+        allow_terminal: bool,
+    },
     /// Troca o modo de permissão da sessão.
     #[serde(rename_all = "camelCase")]
     AcpSetMode { pane_id: PaneId, mode_id: String },

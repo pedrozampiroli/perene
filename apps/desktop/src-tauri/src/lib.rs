@@ -28,6 +28,7 @@ pub fn run() {
             client::acp_prompt,
             client::acp_cancel,
             client::acp_permission,
+            client::acp_fork,
             client::acp_set_mode,
             client::acp_set_model,
             state::manifest_load,

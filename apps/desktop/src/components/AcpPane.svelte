@@ -7,7 +7,7 @@
   // fechada no meio de um turno.
 
   import { onMount, tick } from "svelte";
-  import { ArrowUp, AtSign, Brain, Check, ChevronRight, Square, X } from "@lucide/svelte";
+  import { ArrowUp, AtSign, Brain, Check, ChevronRight, GitFork, Square, X } from "@lucide/svelte";
   import { acp } from "../lib/acp.svelte";
   import { api } from "../lib/api";
   import { app } from "../lib/store.svelte";
@@ -110,11 +110,19 @@
     const cfg = p ? acpConfig(p.toolProfileId) : null;
     if (!p || !cfg) return;
     acp.reset(paneId);
+    // Aba de fork: o `acpFork` já subiu a sessão e atachou. Spawnar aqui criaria
+    // uma conversa nova por cima, jogando fora justamente o que foi bifurcado.
+    if (app.takeForkPending(paneId)) return;
     // Quem roda os comandos somos nós, presos ao diretório da sessão. Desligar
     // isto nas configurações significa que o agente sequer pode pedir.
     api
       .acpSpawn(paneId, p.workingDirectory, cfg.program, cfg.args, app.settings.acpTerminal)
       .catch(() => {}); // o erro real chega como evento `failed`, com mensagem
+  });
+
+  // Guarda o id da sessão no manifest assim que ele chega.
+  $effect(() => {
+    if (conv.sessionId) app.rememberAcpSession(paneId, conv.sessionId);
   });
 
   // Auto-scroll ao chegar conteúdo novo.
@@ -263,6 +271,15 @@
           {/each}
         </select>
       {/if}
+      <button
+        class="fork"
+        title={t("acp.forkHint")}
+        disabled={!conv.sessionId || conv.busy}
+        onclick={() => app.forkAcpTab(paneId)}
+      >
+        <GitFork size={11} />
+        {t("acp.fork")}
+      </button>
       {#if usoPct !== null}
         <span class="uso" class:alto={usoPct >= 80} title={t("acp.contextUsed")}>
           {usoPct}%
@@ -346,7 +363,7 @@
             onclick={() => escolher(i)}
           >
             <span class="srot">{s.rotulo}</span>
-            <span class="sdet">{s.detalhe}</span>
+            {#if s.detalhe}<span class="sdet" title={s.detalhe}>{s.detalhe}</span>{/if}
           </button>
         {/each}
       </div>
@@ -438,6 +455,26 @@
   .sel:focus {
     outline: none;
     border-color: #4a7fb5;
+  }
+  .fork {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #252526;
+    border: 1px solid #3a3d41;
+    border-radius: 4px;
+    color: #cccccc;
+    font: inherit;
+    font-size: 10.5px;
+    padding: 1px 6px;
+    cursor: pointer;
+  }
+  .fork:hover:not(:disabled) {
+    background: #3a3d41;
+  }
+  .fork:disabled {
+    color: #5a5a5a;
+    cursor: default;
   }
   .uso {
     margin-left: auto;
@@ -685,16 +722,19 @@
     margin-bottom: 6px;
     z-index: 5;
   }
+  /* Duas linhas: nome em cima, descrição embaixo. Descrição de comando é
+     prosa longa e não cabe ao lado do nome sem virar reticências inúteis. */
   .sug {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
     width: 100%;
     text-align: left;
     background: none;
     border: none;
     color: #cccccc;
-    padding: 5px 10px;
+    padding: 4px 10px;
     font: inherit;
     font-size: 11.5px;
     cursor: pointer;
@@ -712,11 +752,16 @@
   }
   .sdet {
     color: #8a8a8a;
+    font-size: 10.5px;
+    line-height: 1.35;
+    /* Duas linhas no máximo: a descrição situa, não substitui a documentação. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    direction: rtl; /* caminho longo: o fim importa mais que o começo */
-    text-align: left;
+    max-width: 100%;
+    word-break: break-word;
   }
   .sug.sel .sdet {
     color: #cfd6dd;

@@ -333,6 +333,30 @@ pub fn acp_cancel(state: State<'_, DaemonClient>, pane_id: String) {
 }
 
 #[tauri::command]
+pub fn acp_fork(
+    app: AppHandle,
+    state: State<'_, DaemonClient>,
+    pane_id: String,
+    source_session_id: String,
+    cwd: String,
+    program: String,
+    args: Vec<String>,
+    allow_terminal: bool,
+) -> Result<(), String> {
+    state.ensure(&app)?;
+    state.send(&ClientMessage::AcpFork {
+        pane_id: pane_id.clone(),
+        source_session_id,
+        cwd,
+        program,
+        args,
+        allow_terminal,
+    })?;
+    state.send(&ClientMessage::Attach { pane_id })?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn acp_set_mode(
     state: State<'_, DaemonClient>,
     pane_id: String,

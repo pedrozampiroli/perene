@@ -114,6 +114,8 @@
   "acp.thinking": "Thinking",
   "acp.mode": "Permission mode",
   "acp.model": "Model",
+  "acp.fork": "Fork",
+  "acp.forkHint": "Fork this conversation into a new tab",
   "acp.contextUsed": "Context used",
   "acp.noOutput": "(no output)",
   "acp.waitingOutput": "waiting for output…",

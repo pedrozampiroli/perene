@@ -9,7 +9,7 @@ import { acp } from "./acp.svelte";
 import { api } from "./api";
 import { i18n, detectLocale, t } from "./i18n.svelte";
 import { baseName, isInWorktree } from "./paths";
-import { PROFILES, buildCommand, needsSessionId, supportsAcp } from "./profiles";
+import { PROFILES, acpConfig, buildCommand, needsSessionId, supportsAcp } from "./profiles";
 import type {
   LayoutNode,
   Manifest,
@@ -727,6 +727,82 @@ class AppStore {
       this.activeWorkspace?.directory ??
       this.home
     );
+  }
+
+  /**
+   * Bifurca uma sessão ACP numa aba nova.
+   *
+   * A conversa até aqui é herdada; dali em diante as duas seguem separadas.
+   * Aba nova (e não substituir a atual) porque o ponto do fork é justamente
+   * comparar dois caminhos — é como o Claude Code desktop faz, e por isso o
+   * título ganha o sufixo.
+   */
+  forkAcpTab(paneId: string): void {
+    const ws = this.activeWorkspace;
+    const origem = this.findPane(paneId);
+    const sessionId = acp.get(paneId).sessionId;
+    if (!ws || !origem || !sessionId) return;
+
+    const cfg = acpConfig(origem.toolProfileId);
+    if (!cfg) return;
+
+    const pane: Pane = {
+      id: newId("pane"),
+      kind: "acp",
+      toolProfileId: origem.toolProfileId,
+      workingDirectory: origem.workingDirectory,
+      harnessSessionId: null, // o id vem do daemon quando o fork abre
+      resumeExisting: false,
+      scrollbackFile: null,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    // NÃO entra em freshPanes: quem sobe este pane é o `acpFork`, não o
+    // `acpSpawn` que o AcpPane dispara ao montar.
+    this.forkPending.add(pane.id);
+
+    const atual = ws.tabs.find((t) => t.panes.some((p) => p.id === paneId));
+    const tab: Tab = {
+      id: newId("tab"),
+      folderId: atual?.folderId ?? null,
+      title: `${atual?.title ?? origem.toolProfileId} (fork)`,
+      panes: [pane],
+      layout: leaf(pane.id),
+      activePaneId: pane.id,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    ws.tabs.push(tab);
+    ws.activeTabId = tab.id;
+    this.activePaneId = pane.id;
+    this.save();
+
+    void api
+      .acpFork(
+        pane.id,
+        sessionId,
+        origem.workingDirectory,
+        cfg.program,
+        cfg.args,
+        this.settings.acpTerminal,
+      )
+      .catch(() => {});
+  }
+
+  /** Panes cuja sessão o `acpFork` já subiu — o pane não deve spawnar de novo. */
+  private forkPending = new Set<string>();
+
+  /** Consome a marca: o `AcpPane` pergunta uma vez, ao montar. */
+  takeForkPending(paneId: string): boolean {
+    return this.forkPending.delete(paneId);
+  }
+
+  /** Guarda o id da sessão ACP no pane, para sobreviver ao reload da janela. */
+  rememberAcpSession(paneId: string, sessionId: string): void {
+    const pane = this.findPane(paneId);
+    if (!pane || !sessionId || pane.harnessSessionId === sessionId) return;
+    pane.harnessSessionId = sessionId;
+    this.save();
   }
 
   /** Abre o editor numa aba nova. Sem `dir`, usa o diretório do pane ATIVO —

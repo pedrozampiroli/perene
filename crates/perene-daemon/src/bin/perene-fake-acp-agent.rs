@@ -70,10 +70,23 @@ fn main() {
                 &mut out,
                 json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"sess_fake"}}),
             ),
+            // Bifurcação: sessão NOVA, mas derivada da de origem — o id devolvido
+            // deixa isso explícito para o teste conferir a herança.
+            "session/fork" => {
+                let origem = msg["params"]["sessionId"].as_str().unwrap_or("?");
+                send(
+                    &mut out,
+                    json!({"jsonrpc":"2.0","id":id,"result":{
+                        "sessionId": format!("fork_de_{origem}")}}),
+                );
+            }
             "session/prompt" => {
                 // Descreve os blocos recebidos: é assim que o teste confere que
                 // a imagem colada chegou até aqui, e não só o texto.
-                let blocks = msg["params"]["prompt"].as_array().cloned().unwrap_or_default();
+                let blocks = msg["params"]["prompt"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default();
                 let mut prompt = String::new();
                 for b in &blocks {
                     match b["type"].as_str().unwrap_or("") {

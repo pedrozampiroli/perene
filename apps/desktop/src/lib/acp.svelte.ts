@@ -59,6 +59,8 @@ export interface AcpTerminal {
 export interface AcpConversation {
   /** `session/new` respondeu: já dá para mandar prompt. */
   ready: boolean;
+  /** Id da sessão no agente. Necessário para bifurcar. */
+  sessionId: string;
   /** Turno em andamento. */
   busy: boolean;
   blocks: AcpBlock[];
@@ -80,6 +82,7 @@ export interface AcpConversation {
 export function emptyConversation(): AcpConversation {
   return {
     ready: false,
+    sessionId: "",
     busy: false,
     blocks: [],
     plan: [],
@@ -207,6 +210,7 @@ export function applyAcpEvent(conv: AcpConversation, event: AcpEvent): void {
   switch (event.kind) {
     case "ready":
       conv.ready = true;
+      conv.sessionId = event.sessionId ?? "";
       conv.modes = readModes(event.modes);
       conv.models = readModels(event.models);
       return;

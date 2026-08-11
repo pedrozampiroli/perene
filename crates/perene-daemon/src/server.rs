@@ -307,6 +307,21 @@ fn dispatch(
             mentions,
         } => mgr.acp().prompt(&pane_id, &text, &images, &mentions),
         ClientMessage::AcpCancel { pane_id } => mgr.acp().cancel(&pane_id),
+        ClientMessage::AcpFork {
+            pane_id,
+            source_session_id,
+            cwd,
+            program,
+            args,
+            allow_terminal,
+        } => mgr.acp().fork(
+            &pane_id,
+            &source_session_id,
+            &cwd,
+            &program,
+            &args,
+            allow_terminal,
+        ),
         ClientMessage::AcpSetMode { pane_id, mode_id } => mgr.acp().set_mode(&pane_id, &mode_id),
         ClientMessage::AcpSetModel { pane_id, model_id } => {
             mgr.acp().set_model(&pane_id, &model_id)
