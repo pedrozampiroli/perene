@@ -59,6 +59,19 @@ export function supportsAcp(profileId: string): boolean {
   return acpConfig(profileId) !== null;
 }
 
+/**
+ * Famílias de modelo do Claude, por **alias**.
+ *
+ * Alias não envelhece: `opus` sempre aponta para o Opus mais recente da conta.
+ * Um id fixo (`claude-opus-4-6`) apodrece — e é exatamente o que acontece com a
+ * lista que o adapter ACP anuncia, porque ele embute um SDK anterior ao Opus 5
+ * e chega a informar versões erradas ("Sonnet 4.6" para o alias `sonnet`).
+ *
+ * Família nova que não esteja aqui: o campo "Outro modelo…" aceita qualquer
+ * alias ou id completo.
+ */
+export const MODEL_ALIASES = ["opus", "sonnet", "haiku", "fable"] as const;
+
 function yoloFlag(profileId: string, on: boolean): string {
   if (!on) return "";
   switch (profileId) {

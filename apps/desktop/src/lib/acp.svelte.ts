@@ -18,6 +18,7 @@ import type {
   AcpOption,
   AcpPermissionOption,
 } from "./types";
+import { MODEL_ALIASES } from "./profiles";
 
 /** Um pedaço renderizável dentro do cartão de uma ferramenta. */
 export type AcpToolPart =
@@ -197,25 +198,47 @@ function readModes(modes: AcpModes | null | undefined) {
 function readModels(models: AcpModels | null | undefined) {
   return {
     current: str(models?.currentModelId),
-    available: list(models?.availableModels).map((m) => ({
-      id: str(m.modelId),
-      name: str(m.name),
-      description: str(m.description) || null,
-    })),
+    available: withAliases(
+      list(models?.availableModels).map((m) => ({
+        id: str(m.modelId),
+        name: str(m.name),
+        description: str(m.description) || null,
+      })),
+    ),
   };
 }
 
 /**
- * Rótulo do modelo com a **versão** visível.
+ * Rótulo de um modelo na lista.
  *
- * O `name` que o agente manda é genérico ("Sonnet", "Default (recommended)") e
- * não diz qual versão vai rodar; a versão está no começo da descrição
- * ("Sonnet 4.6 · Best for everyday tasks"). Mostramos esse primeiro trecho e
- * deixamos a frase inteira no tooltip.
+ * Para os **aliases** de família mostramos o nome capitalizado, sem versão: o
+ * alias resolve para o mais recente, e a versão que o adapter informa está
+ * errada (SDK dele é anterior ao Opus 5, e ele chama o alias `sonnet` de
+ * "Sonnet 4.6"). Dizer a versão errada é pior que não dizer.
+ *
+ * Para o resto, mostramos o primeiro trecho da descrição, que costuma trazer a
+ * informação útil, caindo no nome quando não há.
  */
 export function modelLabel(opt: AcpOption): string {
+  if ((MODEL_ALIASES as readonly string[]).includes(opt.id)) {
+    return opt.id.charAt(0).toUpperCase() + opt.id.slice(1);
+  }
   const primeiro = (opt.description ?? "").split("·")[0].trim();
   return primeiro || opt.name || opt.id;
+}
+
+/**
+ * Junta os aliases de família à lista que o agente anunciou.
+ *
+ * O adapter só oferece um subconjunto (hoje default/sonnet/haiku) e o omitido
+ * funciona igual — `session/set_model` aceita qualquer alias, testado. Sem isto
+ * o usuário não consegue escolher Opus nem Fable pela interface.
+ */
+function withAliases(available: AcpOption[]): AcpOption[] {
+  const faltando = MODEL_ALIASES.filter((a) => !available.some((m) => m.id === a)).map(
+    (id): AcpOption => ({ id, name: id, description: null }),
+  );
+  return [...available, ...faltando];
 }
 
 /** Aplica um evento do daemon à conversa. Muta (o `$state` é reativo em profundidade). */
