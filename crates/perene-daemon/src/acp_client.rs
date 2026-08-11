@@ -54,6 +54,12 @@ const DEFAULT_OUTPUT_LIMIT: usize = 1024 * 1024;
 /// Mais lento que o frame do PTY de propósito: é um cartão de chat, não um
 /// terminal — atualizar 60×/s só gastaria CPU.
 const EMIT_INTERVAL: Duration = Duration::from_millis(150);
+/// Quanto esperamos a saída terminar de ser lida depois que o processo sai.
+///
+/// Normalmente é instantâneo (o pipe fecha junto). O teto existe para o caso de
+/// um neto herdar o pipe e mantê-lo aberto (`sh -c "sleep 100 &"`): aí o comando
+/// é dado como concluído mesmo sem EOF, em vez de travar a espera.
+const DRAIN_GRACE: Duration = Duration::from_secs(2);
 /// Teto de leitura de arquivo, para um `fs/read` não estourar a memória.
 const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -337,11 +343,15 @@ impl ClientTools {
         }));
         // stdout e stderr entram no MESMO buffer, na ordem em que chegam: é o
         // que o agente veria num terminal de verdade.
+        //
+        // `pendentes` conta as leituras em curso: o fim do comando só é
+        // publicado quando elas acabam (ver a thread de espera abaixo).
+        let pendentes = Arc::new((Mutex::new(0usize), Condvar::new()));
         if let Some(out) = child.stdout.take() {
-            drain(out, Arc::clone(&output));
+            drain(out, Arc::clone(&output), Arc::clone(&pendentes));
         }
         if let Some(err) = child.stderr.take() {
-            drain(err, Arc::clone(&output));
+            drain(err, Arc::clone(&output), Arc::clone(&pendentes));
         }
 
         let exit = Arc::new((Mutex::new(None::<ExitInfo>), Condvar::new()));
@@ -370,6 +380,20 @@ impl ClientTools {
                         signal: None,
                     },
                 };
+                // Sair do processo NÃO significa que já lemos tudo que ele
+                // escreveu: os pipes ainda podem ter bytes em trânsito. Publicar
+                // o fim antes disso faz o `terminal/output` do agente devolver
+                // saída incompleta — ou vazia, que foi o que o CI do Linux pegou.
+                let (contagem, aviso) = &*pendentes;
+                let mut restantes = contagem.lock();
+                let limite = std::time::Instant::now() + DRAIN_GRACE;
+                while *restantes > 0 {
+                    if aviso.wait_until(&mut restantes, limite).timed_out() {
+                        break;
+                    }
+                }
+                drop(restantes);
+
                 let (lock, cvar) = &*exit;
                 *lock.lock() = Some(info);
                 cvar.notify_all();
@@ -441,7 +465,16 @@ impl Drop for ClientTools {
 }
 
 /// Lê um stream até o fim, acumulando no buffer de saída.
-fn drain(mut stream: impl Read + Send + 'static, output: Arc<Mutex<Output>>) {
+///
+/// Incrementa `pendentes` ANTES de a thread começar e decrementa no EOF: é assim
+/// que a espera pelo fim do comando sabe que já leu tudo. Incrementar dentro da
+/// thread abriria a janela de a espera ver zero e seguir cedo demais.
+fn drain(
+    mut stream: impl Read + Send + 'static,
+    output: Arc<Mutex<Output>>,
+    pendentes: Arc<(Mutex<usize>, Condvar)>,
+) {
+    *pendentes.0.lock() += 1;
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
@@ -450,6 +483,9 @@ fn drain(mut stream: impl Read + Send + 'static, output: Arc<Mutex<Output>>) {
                 Ok(n) => output.lock().push(&buf[..n]),
             }
         }
+        let (contagem, aviso) = &*pendentes;
+        *contagem.lock() -= 1;
+        aviso.notify_all();
     });
 }
 
@@ -644,6 +680,120 @@ mod tests {
                 .is_err(),
             "depois do release o terminal não existe mais"
         );
+    }
+
+    #[test]
+    fn draining_only_signals_done_after_the_last_byte() {
+        // Este contador é o mecanismo que conserta a corrida: quem espera o fim
+        // do comando só segue quando ele zera. Testado à parte porque o teste de
+        // ponta a ponta só falha onde o timing do pipe ajuda — foi o CI do Linux
+        // que pegou o bug; no mac passava mesmo quebrado.
+        struct Devagar {
+            restantes: usize,
+        }
+        impl Read for Devagar {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.restantes == 0 {
+                    return Ok(0); // EOF
+                }
+                self.restantes -= 1;
+                std::thread::sleep(Duration::from_millis(40));
+                buf[0] = b'x';
+                Ok(1)
+            }
+        }
+
+        let output = Arc::new(Mutex::new(Output {
+            bytes: Vec::new(),
+            truncated: false,
+            limit: 1024,
+        }));
+        let pendentes = Arc::new((Mutex::new(0usize), Condvar::new()));
+        drain(
+            Devagar { restantes: 5 },
+            Arc::clone(&output),
+            Arc::clone(&pendentes),
+        );
+
+        let (contagem, aviso) = &*pendentes;
+        let mut restantes = contagem.lock();
+        while *restantes > 0 {
+            assert!(
+                !aviso
+                    .wait_until(
+                        &mut restantes,
+                        std::time::Instant::now() + Duration::from_secs(5)
+                    )
+                    .timed_out(),
+                "a drenagem nunca sinalizou o fim"
+            );
+        }
+        drop(restantes);
+        // A propriedade que importa: zerou ⇒ leu tudo.
+        assert_eq!(
+            output.lock().bytes.len(),
+            5,
+            "o contador zerou antes de ler o stream inteiro"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_is_complete_when_the_command_is_reported_as_finished() {
+        // O agente faz `create` → `wait_for_exit` → `output`. Se publicarmos o
+        // fim antes de drenar os pipes, ele lê saída incompleta.
+        let dir = tempfile::tempdir().unwrap();
+        let t = tools(dir.path());
+        let created = t
+            .handle(
+                "terminal/create",
+                json!({"command": "/bin/sh",
+                       "args": ["-c", "i=0; while [ $i -lt 2000 ]; do echo linha-$i; i=$((i+1)); done"]}),
+            )
+            .unwrap();
+        let id = created["terminalId"].as_str().unwrap().to_string();
+
+        t.handle("terminal/wait_for_exit", json!({ "terminalId": id }))
+            .unwrap();
+        let out = t
+            .handle("terminal/output", json!({ "terminalId": id }))
+            .unwrap();
+        let texto = out["output"].as_str().unwrap();
+        assert!(
+            texto.contains("linha-0"),
+            "faltou o começo da saída ({} bytes)",
+            texto.len()
+        );
+        assert!(
+            texto.contains("linha-1999"),
+            "faltou o FIM da saída — o comando foi dado como concluído cedo demais"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_grandchild_holding_the_pipe_does_not_hang_wait_for_exit() {
+        // `sh -c "sleep &"` sai deixando um neto com o pipe aberto: sem teto, a
+        // espera pelo EOF travaria para sempre.
+        let dir = tempfile::tempdir().unwrap();
+        let t = tools(dir.path());
+        let created = t
+            .handle(
+                "terminal/create",
+                json!({"command": "/bin/sh", "args": ["-c", "echo pronto; sleep 30 &"]}),
+            )
+            .unwrap();
+        let id = created["terminalId"].as_str().unwrap().to_string();
+
+        let inicio = std::time::Instant::now();
+        t.handle("terminal/wait_for_exit", json!({ "terminalId": id }))
+            .unwrap();
+        assert!(
+            inicio.elapsed() < DRAIN_GRACE + Duration::from_secs(3),
+            "travou esperando o pipe do neto"
+        );
+        t.handle("terminal/release", json!({ "terminalId": id }))
+            .unwrap();
     }
 
     #[cfg(unix)]
