@@ -23,7 +23,10 @@ pub struct DirEntry {
 #[tauri::command]
 pub fn fs_list_dir(path: String) -> Result<Vec<DirEntry>, String> {
     let mut out = Vec::new();
-    for entry in std::fs::read_dir(&path).map_err(|e| e.to_string())?.flatten() {
+    for entry in std::fs::read_dir(&path)
+        .map_err(|e| e.to_string())?
+        .flatten()
+    {
         let name = entry.file_name().to_string_lossy().to_string();
         if name == ".git" {
             continue;
@@ -57,8 +60,19 @@ pub fn fs_write_file(path: String, content: String) -> Result<(), String> {
 
 /// Diretórios que nunca entram na busca (ruído + performance).
 const SKIP_DIRS: &[&str] = &[
-    ".git", "node_modules", "target", "dist", "build", ".next", ".venv", "venv",
-    "__pycache__", ".cache", ".svelte-kit", "vendor", ".perene",
+    ".git",
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".cache",
+    ".svelte-kit",
+    "vendor",
+    ".perene",
 ];
 
 fn is_skipped(name: &str) -> bool {
@@ -125,14 +139,23 @@ pub fn search_in_files(
 
     let out = if has_rg {
         let mut c = Command::new("rg");
-        c.arg("--line-number").arg("--no-heading").arg("--fixed-strings").arg("--color=never");
+        c.arg("--line-number")
+            .arg("--no-heading")
+            .arg("--fixed-strings")
+            .arg("--color=never");
         if !case_sensitive {
             c.arg("--ignore-case");
         }
         for d in SKIP_DIRS {
             c.arg("--glob").arg(format!("!{d}/**"));
         }
-        c.arg("--max-count").arg("50").arg("--").arg(&query).arg(".").current_dir(&root).output()
+        c.arg("--max-count")
+            .arg("50")
+            .arg("--")
+            .arg(&query)
+            .arg(".")
+            .current_dir(&root)
+            .output()
     } else {
         let mut c = Command::new("grep");
         c.arg("-rn").arg("-F");
@@ -267,11 +290,7 @@ pub fn git_status(path: String) -> GitStatus {
     for line in raw.lines() {
         if let Some(rest) = line.strip_prefix("## ") {
             // Ex.: "main...origin/main [ahead 1, behind 2]"
-            branch = rest
-                .split(['.', ' '])
-                .next()
-                .unwrap_or("")
-                .to_string();
+            branch = rest.split(['.', ' ']).next().unwrap_or("").to_string();
             if let Some(a) = extract_after(rest, "ahead ") {
                 ahead = a;
             }
@@ -298,7 +317,10 @@ pub fn git_status(path: String) -> GitStatus {
 
 fn extract_after(s: &str, marker: &str) -> Option<u32> {
     let idx = s.find(marker)? + marker.len();
-    let digits: String = s[idx..].chars().take_while(|c| c.is_ascii_digit()).collect();
+    let digits: String = s[idx..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
     digits.parse().ok()
 }
 
@@ -328,15 +350,64 @@ pub fn git_diff(root: String, file: String) -> Result<String, String> {
     if tracked {
         git(&root, &["diff", "HEAD", "--", &file])
     } else {
-        git(&root, &["diff", "--no-index", "--", "/dev/null", &file])
-            .or_else(|e| if e.is_empty() { Ok(String::new()) } else { Ok(e) })
+        git(&root, &["diff", "--no-index", "--", "/dev/null", &file]).or_else(|e| {
+            if e.is_empty() {
+                Ok(String::new())
+            } else {
+                Ok(e)
+            }
+        })
     }
 }
 
+/// Branches locais **e** remotos, com os locais primeiro.
+///
+/// Antes eram só os locais (`git branch`): um branch que existe só no GitHub
+/// não aparecia para escolher, e quem quisesse basear uma worktree nele tinha
+/// que fazer checkout na mão antes.
 #[tauri::command]
 pub fn git_branches(root: String) -> Result<Vec<String>, String> {
-    let raw = git(&root, &["branch", "--format=%(refname:short)"])?;
-    Ok(raw.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+    let locais = git(&root, &["branch", "--format=%(refname:short)"])?;
+    let mut out: Vec<String> = locais
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // Remotos: pula o `origin/HEAD -> origin/main`, que não é um branch de
+    // verdade, e os que já têm um local de mesmo nome (seriam duplicata na UI —
+    // a base remota é resolvida na hora de criar, ver `remote_base`).
+    if let Ok(remotos) = git(&root, &["branch", "-r", "--format=%(refname:short)"]) {
+        for linha in remotos.lines() {
+            let nome = linha.trim();
+            if nome.is_empty() || nome.contains("->") {
+                continue;
+            }
+            let curto = nome.split_once('/').map(|(_, b)| b).unwrap_or(nome);
+            if !out.iter().any(|l| l == curto) {
+                out.push(nome.to_string());
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Referência a usar como base de uma worktree, preferindo o remoto.
+///
+/// Um `dev` local desatualizado faria a worktree nascer velha em silêncio — e a
+/// IA trabalharia em cima de código antigo sem ninguém notar. Se existe
+/// `origin/dev`, é dele que partimos.
+///
+/// Já vem qualificado (`origin/...`) ou não existe remoto: devolve como está.
+fn remote_base(root: &str, base: &str) -> String {
+    if base.contains('/') && git(root, &["rev-parse", "--verify", "--quiet", base]).is_ok() {
+        return base.to_string();
+    }
+    let remoto = format!("origin/{base}");
+    match git(root, &["rev-parse", "--verify", "--quiet", &remoto]) {
+        Ok(_) => remoto,
+        Err(_) => base.to_string(),
+    }
 }
 
 #[tauri::command]
@@ -363,7 +434,11 @@ pub fn git_pull(root: String) -> Result<String, String> {
 #[tauri::command]
 pub fn git_push(root: String) -> Result<String, String> {
     // Sem nenhum remote → mensagem clara em vez do "fatal" cru do git.
-    if git(&root, &["remote"]).unwrap_or_default().trim().is_empty() {
+    if git(&root, &["remote"])
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
         return Err("Este repositório não tem um remote configurado. Adicione com: git remote add origin <url>".into());
     }
     match git(&root, &["push"]) {
@@ -509,13 +584,31 @@ pub fn create_project_worktree(repo: String, base: String, name: String) -> Resu
     let safe: String = name
         .trim()
         .chars()
-        .map(|c| if c.is_alphanumeric() || matches!(c, '-' | '_' | '/' | '.') { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '-' | '_' | '/' | '.') {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
-    let safe = if safe.is_empty() { "sessao".to_string() } else { safe };
+    let safe = if safe.is_empty() {
+        "sessao".to_string()
+    } else {
+        safe
+    };
 
     let wt_dir = format!("{root}/.perene/worktrees/{safe}");
     // Garante o .gitignore ANTES (pra pasta já nascer ignorada).
     ensure_gitignore_line(&root, ".perene/");
+
+    // Atualiza as refs antes de escolher a base: sem isto, `origin/dev` seria a
+    // foto do último fetch — que pode ser de dias atrás. Falha de rede não
+    // impede criar a worktree (offline ainda dá pra trabalhar), só faz cair no
+    // que houver localmente.
+    let _ = git(&root, &["fetch", "--prune"]);
+    let base = remote_base(&root, &base);
+
     git(&root, &["worktree", "add", "-b", &safe, &wt_dir, &base])?;
     Ok(wt_dir)
 }
@@ -560,7 +653,10 @@ mod tests {
     #[test]
     fn git_status_detects_this_repo() {
         // O crate vive dentro do repo perene-tauri.
-        let cwd = std::env::current_dir().unwrap().to_string_lossy().to_string();
+        let cwd = std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         let gs = git_status(cwd);
         assert!(gs.is_repo, "deveria detectar o repositório git");
         assert!(!gs.branch.is_empty(), "branch não pode ser vazio");
@@ -578,8 +674,14 @@ mod tests {
 
     #[test]
     fn extract_after_parses_ahead_behind() {
-        assert_eq!(extract_after("main...origin/main [ahead 3, behind 2]", "ahead "), Some(3));
-        assert_eq!(extract_after("main...origin/main [ahead 3, behind 2]", "behind "), Some(2));
+        assert_eq!(
+            extract_after("main...origin/main [ahead 3, behind 2]", "ahead "),
+            Some(3)
+        );
+        assert_eq!(
+            extract_after("main...origin/main [ahead 3, behind 2]", "behind "),
+            Some(2)
+        );
         assert_eq!(extract_after("main", "ahead "), None);
     }
 }
@@ -590,18 +692,26 @@ mod search_tests {
 
     #[test]
     fn lists_project_files_skipping_noise() {
-        let root = std::env::current_dir().unwrap().to_string_lossy().to_string();
+        let root = std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         let files = fs_list_files(root, Some(5000));
         assert!(!files.is_empty(), "deveria listar arquivos do projeto");
         assert!(
-            !files.iter().any(|f| f.contains("node_modules") || f.contains(".git/")),
+            !files
+                .iter()
+                .any(|f| f.contains("node_modules") || f.contains(".git/")),
             "não pode incluir diretórios de ruído"
         );
     }
 
     #[test]
     fn searches_text_in_files() {
-        let root = std::env::current_dir().unwrap().to_string_lossy().to_string();
+        let root = std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         // string que só existe no código deste crate
         let hits = search_in_files(root, "fn search_in_files".into(), true, Some(50));
         assert!(!hits.is_empty(), "deveria achar a própria função");
@@ -622,7 +732,167 @@ mod search_tests {
         )
         .unwrap();
         assert_eq!(n, 1);
-        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "gamma beta gamma");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("a.txt")).unwrap(),
+            "gamma beta gamma"
+        );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod worktree_tests {
+    use super::*;
+
+    /// Repo "remoto" (bare) + clone local, o cenário real de quem trabalha em
+    /// equipe. Devolve `(remoto, local)`.
+    fn repo_com_remoto(tmp: &std::path::Path) -> (String, String) {
+        let remoto = tmp.join("remoto.git").to_string_lossy().to_string();
+        let local = tmp.join("local").to_string_lossy().to_string();
+        let trabalho = tmp.join("semeia").to_string_lossy().to_string();
+
+        let run = |dir: &str, args: &[&str]| {
+            std::process::Command::new("git")
+                .current_dir(dir)
+                .args(args)
+                .output()
+                .expect("git");
+        };
+        std::fs::create_dir_all(&remoto).unwrap();
+        run(&remoto, &["init", "--bare", "-b", "main"]);
+
+        // Semeia o remoto com `main` e `dev`.
+        std::fs::create_dir_all(&trabalho).unwrap();
+        run(&trabalho, &["init", "-b", "main"]);
+        run(&trabalho, &["config", "user.email", "t@t"]);
+        run(&trabalho, &["config", "user.name", "T"]);
+        std::fs::write(format!("{trabalho}/a.txt"), "1").unwrap();
+        run(&trabalho, &["add", "."]);
+        run(&trabalho, &["commit", "-m", "inicial"]);
+        run(&trabalho, &["checkout", "-b", "dev"]);
+        std::fs::write(format!("{trabalho}/dev.txt"), "dev").unwrap();
+        run(&trabalho, &["add", "."]);
+        run(&trabalho, &["commit", "-m", "dev1"]);
+        run(&trabalho, &["remote", "add", "origin", &remoto]);
+        run(&trabalho, &["push", "-u", "origin", "main", "dev"]);
+
+        // Clona: o local nasce com `main` só; `dev` fica só como remoto.
+        run(tmp.to_str().unwrap(), &["clone", &remoto, &local]);
+        run(&local, &["config", "user.email", "t@t"]);
+        run(&local, &["config", "user.name", "T"]);
+        (remoto, local)
+    }
+
+    fn commitar_no_remoto(tmp: &std::path::Path, remoto: &str, arquivo: &str) {
+        let clone = tmp
+            .join(format!("outro-{arquivo}"))
+            .to_string_lossy()
+            .to_string();
+        let run = |dir: &str, args: &[&str]| {
+            std::process::Command::new("git")
+                .current_dir(dir)
+                .args(args)
+                .output()
+                .expect("git");
+        };
+        std::process::Command::new("git")
+            .current_dir(tmp)
+            .args(["clone", "-b", "dev", remoto, &clone])
+            .output()
+            .unwrap();
+        run(&clone, &["config", "user.email", "t@t"]);
+        run(&clone, &["config", "user.name", "T"]);
+        std::fs::write(format!("{clone}/{arquivo}"), "novo").unwrap();
+        run(&clone, &["add", "."]);
+        run(&clone, &["commit", "-m", "trabalho de outra pessoa"]);
+        run(&clone, &["push"]);
+    }
+
+    #[test]
+    fn worktree_nasce_do_remoto_atualizado_e_nao_da_copia_velha() {
+        // O bug: se o `dev` local está atrás, a worktree nascia velha em
+        // silêncio — e a IA trabalhava em cima de código antigo.
+        let tmp = tempfile::tempdir().unwrap();
+        let (remoto, local) = repo_com_remoto(tmp.path());
+
+        // Traz `dev` para o local e ele fica parado no tempo.
+        std::process::Command::new("git")
+            .current_dir(&local)
+            .args(["checkout", "dev"])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .current_dir(&local)
+            .args(["checkout", "main"])
+            .output()
+            .unwrap();
+
+        // Outra pessoa empurra algo para `dev`.
+        commitar_no_remoto(tmp.path(), &remoto, "recente.txt");
+
+        let wt = create_project_worktree(local.clone(), "dev".into(), "minha-sessao".into())
+            .expect("devia criar a worktree");
+
+        assert!(
+            std::path::Path::new(&wt).join("recente.txt").exists(),
+            "a worktree nasceu do `dev` local desatualizado — o commit de outra \
+             pessoa não veio junto"
+        );
+    }
+
+    #[test]
+    fn base_que_so_existe_no_remoto_tambem_funciona() {
+        // Sem `dev` local nenhum: antes o `git worktree add ... dev` falharia.
+        let tmp = tempfile::tempdir().unwrap();
+        let (_remoto, local) = repo_com_remoto(tmp.path());
+
+        let wt = create_project_worktree(local, "dev".into(), "so-remoto".into())
+            .expect("base que só existe no remoto devia funcionar");
+        assert!(std::path::Path::new(&wt).join("dev.txt").exists());
+    }
+
+    #[test]
+    fn sem_remoto_continua_usando_o_branch_local() {
+        // Repo local puro (sem origin): não pode quebrar por causa do fetch.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("solo").to_string_lossy().to_string();
+        std::fs::create_dir_all(&repo).unwrap();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .current_dir(&repo)
+                .args(args)
+                .output()
+                .unwrap();
+        };
+        run(&["init", "-b", "main"]);
+        run(&["config", "user.email", "t@t"]);
+        run(&["config", "user.name", "T"]);
+        std::fs::write(format!("{repo}/a.txt"), "1").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-m", "inicial"]);
+
+        let wt = create_project_worktree(repo, "main".into(), "offline".into())
+            .expect("sem remoto ainda tem que criar");
+        assert!(std::path::Path::new(&wt).join("a.txt").exists());
+    }
+
+    #[test]
+    fn a_lista_de_bases_inclui_branch_que_so_existe_no_github() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_remoto, local) = repo_com_remoto(tmp.path());
+
+        let bases = git_branches(local).unwrap();
+        assert!(
+            bases.iter().any(|b| b == "main"),
+            "faltou o local: {bases:?}"
+        );
+        assert!(
+            bases.iter().any(|b| b == "origin/dev"),
+            "branch que só existe no remoto sumiu da lista: {bases:?}"
+        );
+        assert!(
+            !bases.iter().any(|b| b.contains("->")),
+            "o ponteiro origin/HEAD não é um branch: {bases:?}"
+        );
     }
 }
