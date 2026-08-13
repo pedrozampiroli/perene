@@ -63,6 +63,9 @@ pub struct Folder {
     /// Sobrepõe o diretório do workspace para terminais desta pasta.
     #[serde(default)]
     pub directory: Option<String>,
+    /// Pasta-mãe, para aninhamento em árvore. `None` = raiz do workspace.
+    #[serde(default)]
+    pub parent_id: Option<Id>,
 }
 
 /// Item da sidebar: grupo nomeado de panes num grid. Só a aba ativa é exibida.
@@ -335,6 +338,41 @@ mod tests {
         assert!(json.contains("\"activeWorkspaceId\""));
         assert!(json.contains("\"toolProfileId\""));
         assert!(json.contains("\"workingDirectory\""));
+    }
+
+    #[test]
+    fn folder_parent_id_defaults_to_none_for_old_manifests() {
+        // Manifest salvo antes do aninhamento de pastas não tem `parentId` no
+        // JSON — precisa continuar carregando (pasta cai na raiz).
+        let json = r#"{"id":"fold_1","name":"Old","order":0,"collapsed":false}"#;
+        let folder: Folder = serde_json::from_str(json).unwrap();
+        assert_eq!(folder.parent_id, None);
+    }
+
+    #[test]
+    fn nested_folder_round_trips_with_parent_id() {
+        let mut m = Manifest::bootstrap("/tmp/proj");
+        let parent = Folder {
+            id: "fold_parent".into(),
+            name: "Parent".into(),
+            order: 0,
+            collapsed: false,
+            directory: None,
+            parent_id: None,
+        };
+        let child = Folder {
+            id: "fold_child".into(),
+            name: "Child".into(),
+            order: 1,
+            collapsed: false,
+            directory: None,
+            parent_id: Some("fold_parent".into()),
+        };
+        m.workspaces[0].folders = vec![parent, child];
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(json.contains("\"parentId\":\"fold_parent\""), "wire: {json}");
+        let back: Manifest = serde_json::from_str(&json).unwrap();
+        assert_eq!(m, back);
     }
 
     #[test]

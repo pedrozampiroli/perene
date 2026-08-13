@@ -6,7 +6,7 @@
   import { shortPath as shortenPath } from "../lib/paths";
   import ToolIcon from "./ToolIcon.svelte";
   import StatusDot from "./StatusDot.svelte";
-  import type { Tab } from "../lib/types";
+  import type { Tab, Folder as FolderType } from "../lib/types";
 
   const ws = $derived(app.activeWorkspace);
 
@@ -15,39 +15,56 @@
     return shortenPath(p);
   }
 
-  // ── Drag & drop de abas ──────────────────────────────────────────────────
+  // ── Drag & drop de abas e pastas ────────────────────────────────────────
   // IMPORTANTE: os handlers de drop precisam de stopPropagation, senão o evento
-  // borbulha até a raiz (.tree) e a aba acaba caindo fora da pasta.
-  let dragging = $state<string | null>(null);
+  // borbulha até a raiz (.tree) e a aba/pasta acaba caindo fora do alvo.
+  type DragItem = { kind: "tab" | "folder"; id: string };
+  let dragging = $state<DragItem | null>(null);
   let overFolder = $state<string | null>(null); // id da pasta (ou "__root__")
 
-  function onDragStart(e: DragEvent, tabId: string) {
-    dragging = tabId;
-    e.dataTransfer?.setData("text/plain", tabId);
+  function onDragStart(e: DragEvent, kind: DragItem["kind"], id: string) {
+    dragging = { kind, id };
+    e.dataTransfer?.setData("text/plain", id);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }
   function onDragEnd() {
     dragging = null;
     overFolder = null;
   }
+  /** Uma pasta não pode cair dentro dela mesma nem de uma subpasta dela. */
+  function folderDropAllowed(folderId: string | null): boolean {
+    if (!dragging || dragging.kind !== "folder") return true;
+    if (folderId === null) return true;
+    return ws ? !app.isFolderOrDescendant(ws, dragging.id, folderId) : true;
+  }
   function allowDrop(e: DragEvent, folderId: string | null) {
     e.preventDefault();
     e.stopPropagation();
+    if (!folderDropAllowed(folderId)) {
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
+      overFolder = null;
+      return;
+    }
     if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     overFolder = folderId ?? "__root__";
   }
   function dropOnFolder(e: DragEvent, folderId: string | null) {
     e.preventDefault();
     e.stopPropagation();
-    const id = e.dataTransfer?.getData("text/plain") || dragging;
-    if (id) app.moveTab(id, folderId);
+    const item = dragging ?? { kind: "tab" as const, id: e.dataTransfer?.getData("text/plain") ?? "" };
+    if (item.id && folderDropAllowed(folderId)) {
+      if (item.kind === "folder") app.moveFolder(item.id, folderId);
+      else app.moveTab(item.id, folderId);
+    }
     onDragEnd();
   }
   function dropOnTab(e: DragEvent, target: Tab) {
     e.preventDefault();
     e.stopPropagation();
-    const id = e.dataTransfer?.getData("text/plain") || dragging;
-    if (id && id !== target.id) app.moveTab(id, target.folderId ?? null, target.id);
+    const item = dragging ?? { kind: "tab" as const, id: e.dataTransfer?.getData("text/plain") ?? "" };
+    if (!item.id) return onDragEnd();
+    if (item.kind === "folder") app.moveFolder(item.id, target.folderId ?? null);
+    else if (item.id !== target.id) app.moveTab(item.id, target.folderId ?? null, target.id);
     onDragEnd();
   }
 </script>
@@ -100,46 +117,8 @@
     tabindex="-1"
   >
     {#if ws}
-      {#each ws.folders as folder (folder.id)}
-        <div
-          class="folder"
-          class:over={overFolder === folder.id}
-          ondragover={(e) => allowDrop(e, folder.id)}
-          ondragleave={(e) => { e.stopPropagation(); overFolder = null; }}
-          ondrop={(e) => dropOnFolder(e, folder.id)}
-          role="group"
-        >
-          <div
-            class="folder-head"
-            onclick={() => app.toggleFolder(folder.id)}
-            ondblclick={(e) => { e.stopPropagation(); app.openRenameModal("folder", folder.id, folder.name); }}
-            oncontextmenu={(e) => app.openContextMenu(e, app.folderMenu(folder.id))}
-            role="button"
-            tabindex="0"
-          >
-            <span class="caret">
-              {#if folder.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
-            </span>
-            {#if folder.collapsed}<Folder size={14} class="ficon" />{:else}<FolderOpen size={14} class="ficon" />{/if}
-            <span class="fname">{folder.name}</span>
-            <span class="fcount">{app.tabsInFolder(ws, folder.id).length}</span>
-            <span class="fstatus"><StatusDot state={app.folderStatus(ws, folder.id)} size={7} /></span>
-            <button
-              class="mini"
-              title={t("sidebar.newSessionInFolder")}
-              onclick={(e) => { e.stopPropagation(); app.openContextMenu(e, app.folderMenu(folder.id)); }}
-            ><Plus size={12} /></button>
-            <button class="mini" title={t("sidebar.setFolderDirectory")} onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
-            <button class="mini" title={t("sidebar.removeFolder")} onclick={(e) => { e.stopPropagation(); app.confirmDeleteFolder(folder.id); }}><X size={12} /></button>
-          </div>
-          {#if !folder.collapsed}
-            {#each app.tabsInFolder(ws, folder.id) as tab (tab.id)}
-              {@render tabRow(tab)}
-            {:else}
-              <div class="fempty">{t("sidebar.dropHint")}</div>
-            {/each}
-          {/if}
-        </div>
+      {#each app.foldersInFolder(ws, null) as folder (folder.id)}
+        {@render folderNode(folder)}
       {/each}
 
       {#each app.tabsInFolder(ws, null) as tab (tab.id)}
@@ -149,14 +128,66 @@
   </div>
 </div>
 
+{#snippet folderNode(folder: FolderType)}
+  {@const children = ws ? app.foldersInFolder(ws, folder.id) : []}
+  {@const tabs = ws ? app.tabsInFolder(ws, folder.id) : []}
+  <div
+    class="folder"
+    class:over={overFolder === folder.id}
+    ondragover={(e) => allowDrop(e, folder.id)}
+    ondragleave={(e) => { e.stopPropagation(); overFolder = null; }}
+    ondrop={(e) => dropOnFolder(e, folder.id)}
+    role="group"
+  >
+    <div
+      class="folder-head"
+      class:drag={dragging?.kind === "folder" && dragging.id === folder.id}
+      draggable="true"
+      ondragstart={(e) => onDragStart(e, "folder", folder.id)}
+      ondragend={onDragEnd}
+      onclick={() => app.toggleFolder(folder.id)}
+      ondblclick={(e) => { e.stopPropagation(); app.openRenameModal("folder", folder.id, folder.name); }}
+      oncontextmenu={(e) => app.openContextMenu(e, app.folderMenu(folder.id))}
+      role="button"
+      tabindex="0"
+    >
+      <span class="caret">
+        {#if folder.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
+      </span>
+      {#if folder.collapsed}<Folder size={14} class="ficon" />{:else}<FolderOpen size={14} class="ficon" />{/if}
+      <span class="fname">{folder.name}</span>
+      <span class="fcount">{ws ? app.tabsInSubtree(ws, folder.id).length : 0}</span>
+      <span class="fstatus"><StatusDot state={ws ? app.folderStatus(ws, folder.id) : null} size={7} /></span>
+      <button
+        class="mini"
+        title={t("sidebar.newSessionInFolder")}
+        onclick={(e) => { e.stopPropagation(); app.openContextMenu(e, app.folderMenu(folder.id)); }}
+      ><Plus size={12} /></button>
+      <button class="mini" title={t("sidebar.setFolderDirectory")} onclick={(e) => { e.stopPropagation(); app.changeFolderDirectory(folder.id); }}><FolderCog size={12} /></button>
+      <button class="mini" title={t("sidebar.removeFolder")} onclick={(e) => { e.stopPropagation(); app.confirmDeleteFolder(folder.id); }}><X size={12} /></button>
+    </div>
+    {#if !folder.collapsed}
+      {#each children as child (child.id)}
+        {@render folderNode(child)}
+      {/each}
+      {#each tabs as tab (tab.id)}
+        {@render tabRow(tab)}
+      {/each}
+      {#if !children.length && !tabs.length}
+        <div class="fempty">{t("sidebar.dropHint")}</div>
+      {/if}
+    {/if}
+  </div>
+{/snippet}
+
 {#snippet tabRow(tab: Tab)}
   {@const prof = profile(tab.panes[0]?.toolProfileId ?? "shell")}
   <div
     class="tab-row"
     class:active={tab.id === ws?.activeTabId}
-    class:drag={dragging === tab.id}
+    class:drag={dragging?.kind === "tab" && dragging.id === tab.id}
     draggable="true"
-    ondragstart={(e) => onDragStart(e, tab.id)}
+    ondragstart={(e) => onDragStart(e, "tab", tab.id)}
     ondragend={onDragEnd}
     ondragover={(e) => allowDrop(e, tab.folderId ?? null)}
     ondrop={(e) => dropOnTab(e, tab)}
@@ -320,6 +351,15 @@
   }
   .folder .tab-row {
     margin-left: 14px;
+  }
+  /* Pasta dentro de pasta: cada nível soma seu próprio recuo — o efeito de
+     árvore vem de aplicar o mesmo recuo em cada aninhamento, não de calcular
+     a profundidade em JS. */
+  .folder .folder {
+    margin-left: 14px;
+  }
+  .folder-head.drag {
+    opacity: 0.45;
   }
   .caret {
     display: flex;
