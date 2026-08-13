@@ -45,6 +45,8 @@ export interface Folder {
   order: number;
   collapsed: boolean;
   directory?: string | null;
+  /** Pasta-mãe, para aninhamento em árvore. `null`/ausente = raiz do workspace. */
+  parentId?: string | null;
 }
 
 export interface Workspace {

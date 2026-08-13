@@ -20,6 +20,7 @@ import {
   supportsFork,
 } from "./profiles";
 import type {
+  Folder,
   LayoutNode,
   Manifest,
   Pane,
@@ -219,9 +220,9 @@ class AppStore {
     return this.worstOf(tab.panes);
   }
 
-  /** Estado de uma pasta: o mais urgente entre as abas dela. */
+  /** Estado de uma pasta: o mais urgente entre as abas dela e das subpastas. */
   folderStatus(ws: Workspace, folderId: string): PaneState | null {
-    return this.worstOf(this.tabsInFolder(ws, folderId).flatMap((t) => t.panes));
+    return this.worstOf(this.tabsInSubtree(ws, folderId).flatMap((t) => t.panes));
   }
 
   /**
@@ -323,6 +324,28 @@ class AppStore {
     return ws.tabs.filter((t) => (t.folderId ?? null) === folderId);
   }
 
+  /** Subpastas diretas de `parentId` (`null` = pastas na raiz do workspace). */
+  foldersInFolder(ws: Workspace, parentId: string | null): Folder[] {
+    return ws.folders.filter((f) => (f.parentId ?? null) === parentId);
+  }
+
+  /** Ids de todas as subpastas de `folderId`, recursivamente (sem incluir ela mesma). */
+  private descendantFolderIds(ws: Workspace, folderId: string): string[] {
+    const children = this.foldersInFolder(ws, folderId);
+    return children.flatMap((f) => [f.id, ...this.descendantFolderIds(ws, f.id)]);
+  }
+
+  /** `true` se `candidateId` é `folderId` ou está dentro da subárvore dela. */
+  isFolderOrDescendant(ws: Workspace, folderId: string, candidateId: string): boolean {
+    return folderId === candidateId || this.descendantFolderIds(ws, folderId).includes(candidateId);
+  }
+
+  /** Abas de `folderId` e de todas as suas subpastas. */
+  tabsInSubtree(ws: Workspace, folderId: string): Tab[] {
+    const ids = new Set([folderId, ...this.descendantFolderIds(ws, folderId)]);
+    return ws.tabs.filter((t) => t.folderId && ids.has(t.folderId));
+  }
+
   // ── Save ──────────────────────────────────────────────────────────────
   save(): void {
     void api.manifestSave($state.snapshot(this.manifest));
@@ -395,9 +418,11 @@ class AppStore {
       showDirectory: true,
     };
   }
-  openNewFolderModal(): void {
+  /** `parentId` presente = a pasta nasce dentro dela (subpasta). */
+  openNewFolderModal(parentId: string | null = null): void {
     this.nameModal = {
       kind: "newFolder",
+      target: parentId ? { type: "folder", id: parentId } : undefined,
       title: t("name.newFolder"),
       name: "",
       directory: null,
@@ -425,7 +450,7 @@ class AppStore {
     if (m.kind === "newWorkspace") {
       if (name && m.directory) this.createWorkspaceNamed(name, m.directory);
     } else if (m.kind === "newFolder") {
-      this.createFolder(name || t("name.newFolder"));
+      this.createFolder(name || t("name.newFolder"), m.target?.type === "folder" ? m.target.id : null);
     } else if (m.kind === "rename" && m.target) {
       if (name) {
         if (m.target.type === "ws") this.renameWorkspace(m.target.id, name);
@@ -537,16 +562,28 @@ class AppStore {
 
   /** Itens do menu de uma pasta. */
   folderMenu(id: string): MenuItem[] {
-    const f = this.activeWorkspace?.folders.find((f) => f.id === id);
+    const ws = this.activeWorkspace;
+    const f = ws?.folders.find((f) => f.id === id);
+    // Não pode mover a pasta para dentro dela mesma nem de uma subpasta dela.
+    const moves: MenuItem[] = (ws?.folders ?? [])
+      .filter((other) => other.id !== id && !this.isFolderOrDescendant(ws!, id, other.id))
+      .map((other) => ({
+        label: t("menu.moveTo", { folder: other.name }),
+        disabled: (f?.parentId ?? null) === other.id,
+        action: () => this.moveFolder(id, other.id),
+      }));
     return [
       ...PROFILES.map((p) => ({
         label: t("menu.newSessionWith", { tool: p.label }),
         action: () => void this.startNewSession(p.id, id),
       })),
       { separator: true },
+      { label: t("menu.newSubfolder"), action: () => this.openNewFolderModal(id) },
       { label: t("menu.rename"), action: () => this.openRenameModal("folder", id, f?.name ?? "") },
       { label: t("menu.setDirectory"), action: () => void this.changeFolderDirectory(id) },
       { label: f?.collapsed ? t("menu.expand") : t("menu.collapse"), action: () => this.toggleFolder(id) },
+      ...(moves.length ? [{ separator: true }, ...moves] : []),
+      ...(f?.parentId ? [{ label: t("menu.moveToRoot"), action: () => this.moveFolder(id, null) }] : []),
       { separator: true },
       { label: t("menu.deleteFolder"), danger: true, action: () => this.confirmDeleteFolder(id) },
     ];
@@ -669,14 +706,31 @@ class AppStore {
   }
 
   // ── Folders ────────────────────────────────────────────────────────────
-  /** Cria uma pasta e devolve o id (a UI abre o rename inline para nomear). */
-  createFolder(name = "Nova pasta"): string {
+  /** Cria uma pasta (opcionalmente dentro de outra) e devolve o id (a UI abre
+   *  o rename inline para nomear). */
+  createFolder(name = "Nova pasta", parentId: string | null = null): string {
     const ws = this.activeWorkspace;
     if (!ws) return "";
     const id = newId("fold");
-    ws.folders.push({ id, name, order: ws.folders.length, collapsed: false });
+    ws.folders.push({ id, name, order: ws.folders.length, collapsed: false, parentId });
     this.save();
     return id;
+  }
+
+  /** Aninha `folderId` dentro de `newParentId` (`null` = raiz do workspace).
+   *  Recusa em silêncio se isso criaria um ciclo (mover uma pasta para dentro
+   *  dela mesma ou de uma subpasta dela) — as abas da subárvore não precisam
+   *  de nenhum ajuste: elas seguem referenciando `folderId`, e a pasta (com
+   *  toda a árvore embaixo) é o que se move. */
+  moveFolder(folderId: string, newParentId: string | null): void {
+    const ws = this.activeWorkspace;
+    if (!ws) return;
+    const folder = ws.folders.find((f) => f.id === folderId);
+    if (!folder) return;
+    if (newParentId && this.isFolderOrDescendant(ws, folderId, newParentId)) return;
+    if ((folder.parentId ?? null) === newParentId) return;
+    folder.parentId = newParentId;
+    this.save();
   }
 
   async changeFolderDirectory(id: string): Promise<void> {
@@ -701,9 +755,15 @@ class AppStore {
   deleteFolder(id: string): void {
     const ws = this.activeWorkspace;
     if (!ws) return;
-    // As abas da pasta voltam pra raiz (não são apagadas).
+    const folder = ws.folders.find((f) => f.id === id);
+    const parentId = folder?.parentId ?? null;
+    // Abas e subpastas sobem um nível (para a mãe da pasta apagada, ou a raiz
+    // do workspace se ela já estava na raiz) — nada é apagado junto.
     ws.tabs.forEach((t) => {
-      if (t.folderId === id) t.folderId = null;
+      if (t.folderId === id) t.folderId = parentId;
+    });
+    ws.folders.forEach((f) => {
+      if (f.parentId === id) f.parentId = parentId;
     });
     ws.folders = ws.folders.filter((f) => f.id !== id);
     this.save();
@@ -717,9 +777,17 @@ class AppStore {
   }
 
   // ── Tabs ──────────────────────────────────────────────────────────────
+  /** Diretório herdado: sobe da pasta pelas mães até achar uma com `directory`. */
+  private folderDirectory(ws: Workspace, folderId: string | null): string | undefined {
+    let current = folderId ? ws.folders.find((f) => f.id === folderId) : undefined;
+    while (current) {
+      if (current.directory) return current.directory;
+      current = current.parentId ? ws.folders.find((f) => f.id === current!.parentId) : undefined;
+    }
+    return undefined;
+  }
   private cwdFor(ws: Workspace, folderId: string | null): string {
-    const folder = folderId ? ws.folders.find((f) => f.id === folderId) : undefined;
-    return folder?.directory ?? ws.directory ?? this.home ?? ".";
+    return this.folderDirectory(ws, folderId) ?? ws.directory ?? this.home ?? ".";
   }
 
   private makePane(profileId: string, cwd: string): Pane {
