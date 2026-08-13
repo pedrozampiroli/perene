@@ -9,6 +9,19 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
+/// Evita a janela de console piscando no Windows: `git`/`rg`/`gh` são apps de
+/// console, e como o Perene não tem console próprio (app GUI), cada subprocesso
+/// abriria uma janela nova por padrão. Sem efeito no mac/Linux.
+fn no_window(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 // ── Filesystem ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -135,7 +148,7 @@ pub fn search_in_files(
         return Vec::new();
     }
     let max = limit.unwrap_or(500);
-    let has_rg = Command::new("rg").arg("--version").output().is_ok();
+    let has_rg = no_window(Command::new("rg").arg("--version")).output().is_ok();
 
     let out = if has_rg {
         let mut c = Command::new("rg");
@@ -154,8 +167,8 @@ pub fn search_in_files(
             .arg("--")
             .arg(&query)
             .arg(".")
-            .current_dir(&root)
-            .output()
+            .current_dir(&root);
+        no_window(&mut c).output()
     } else {
         let mut c = Command::new("grep");
         c.arg("-rn").arg("-F");
@@ -165,7 +178,8 @@ pub fn search_in_files(
         for d in SKIP_DIRS {
             c.arg(format!("--exclude-dir={d}"));
         }
-        c.arg("--").arg(&query).arg(".").current_dir(&root).output()
+        c.arg("--").arg(&query).arg(".").current_dir(&root);
+        no_window(&mut c).output()
     };
 
     let Ok(out) = out else {
@@ -225,9 +239,9 @@ pub fn replace_in_files(
 // ── Git ──────────────────────────────────────────────────────────────────────
 
 fn git(repo: &str, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .args(["-C", repo])
-        .args(args)
+    let mut cmd = Command::new("git");
+    cmd.args(["-C", repo]).args(args);
+    let out = no_window(&mut cmd)
         .output()
         .map_err(|e| format!("git não encontrado: {e}"))?;
     if !out.status.success() {
@@ -461,9 +475,9 @@ pub fn git_push(root: String) -> Result<String, String> {
 #[tauri::command]
 pub fn git_open_pr(root: String) -> Result<(), String> {
     let run = |args: &[&str]| -> Result<(), String> {
-        let out = Command::new("gh")
-            .current_dir(&root)
-            .args(args)
+        let mut cmd = Command::new("gh");
+        cmd.current_dir(&root).args(args);
+        let out = no_window(&mut cmd)
             .output()
             .map_err(|e| format!("gh não encontrado: {e}"))?;
         if out.status.success() {

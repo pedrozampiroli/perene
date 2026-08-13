@@ -5,6 +5,19 @@
 use std::path::Path;
 use std::process::Command;
 
+/// Evita a janela de console piscando no Windows ao spawnar o `sqlite3` (app de
+/// console) a partir do Perene, que não tem console próprio. Sem efeito no
+/// mac/Linux.
+fn no_window(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 fn sqlite_bin() -> Option<&'static str> {
     const CANDIDATES: &[&str] = &[
         "/usr/bin/sqlite3",
@@ -21,13 +34,9 @@ fn sqlite_bin() -> Option<&'static str> {
 /// Roda `sql` em modo `-readonly -json` e devolve o JSON (array de objetos).
 pub fn query_json(db: &Path, sql: &str) -> Option<String> {
     let bin = sqlite_bin()?;
-    let out = Command::new(bin)
-        .arg("-readonly")
-        .arg("-json")
-        .arg(db)
-        .arg(sql)
-        .output()
-        .ok()?;
+    let mut cmd = Command::new(bin);
+    cmd.arg("-readonly").arg("-json").arg(db).arg(sql);
+    let out = no_window(&mut cmd).output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -38,14 +47,9 @@ pub fn query_json(db: &Path, sql: &str) -> Option<String> {
 /// Roda `sql` esperando UMA linha com colunas separadas por `|` (agregações).
 pub fn query_row(db: &Path, sql: &str) -> Option<Vec<String>> {
     let bin = sqlite_bin()?;
-    let out = Command::new(bin)
-        .arg("-readonly")
-        .arg("-separator")
-        .arg("|")
-        .arg(db)
-        .arg(sql)
-        .output()
-        .ok()?;
+    let mut cmd = Command::new(bin);
+    cmd.arg("-readonly").arg("-separator").arg("|").arg(db).arg(sql);
+    let out = no_window(&mut cmd).output().ok()?;
     if !out.status.success() {
         return None;
     }
