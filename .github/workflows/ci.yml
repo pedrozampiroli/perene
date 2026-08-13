@@ -109,6 +109,37 @@ jobs:
           fi
           npm run tauri build
 
+      # Pacote nativo do Arch a partir do .deb já construído (mesmo binário).
+      # Roda num container porque `makepkg` só existe no Arch; o runner é
+      # x86_64, então não há emulação no meio.
+      #
+      # Não é AUR: AUR é um repositório de receitas e exige conta. Isto é o
+      # pacote pronto, anexado à release — o usuário faz `pacman -U`.
+      - name: Pacote do Arch (.pkg.tar.zst)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -e
+          mkdir -p /tmp/arch
+          cp packaging/arch/PKGBUILD /tmp/arch/
+          cp target/release/bundle/deb/*.deb /tmp/arch/perene.deb
+          VER=$(node -p "require('./apps/desktop/package.json').version")
+          docker run --rm -v /tmp/arch:/pkg -e VER="$VER" archlinux:latest bash -c '
+            set -e
+            pacman -Sy --noconfirm --needed base-devel >/dev/null
+            useradd -m b && cp -r /pkg /home/b/w && chown -R b /home/b/w
+            cd /home/b/w
+            sed -i "s/^pkgver=.*/pkgver=$VER/" PKGBUILD
+            su b -c "makepkg -f --nodeps --noconfirm"
+            # Instala de verdade: se o pacote estiver quebrado, o job falha aqui
+            # em vez de a release sair com um .pkg.tar.zst que ninguém instala.
+            pacman -U --noconfirm --nodeps *.pkg.tar.zst
+            test -x /usr/bin/perene-desktop
+            pacman -Qi perene | head -3
+            cp *.pkg.tar.zst /pkg/
+          '
+          mkdir -p target/release/bundle/arch
+          cp /tmp/arch/*.pkg.tar.zst target/release/bundle/arch/
+
       # `error` e não `ignore`: com `ignore`, um bundle que falhou virava um
       # artefato vazio e a release saía sem aquela plataforma, em silêncio.
       - name: Subir artefatos
@@ -123,6 +154,7 @@ jobs:
             target/release/bundle/**/*.deb
             target/release/bundle/**/*.rpm
             target/release/bundle/**/*.AppImage
+            target/release/bundle/**/*.pkg.tar.zst
 
   # Publica os instaladores numa Release do GitHub: artefato de Action expira e
   # exige login para baixar; a release dá link público e permanente.
