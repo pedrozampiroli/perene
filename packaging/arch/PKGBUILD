@@ -1,0 +1,25 @@
+# Maintainer: Pedro Zampiroli <pedrozampiroli@tegasistemas.com.br>
+#
+# Empacota o binário já compilado pelo CI (mesmo artefato do .deb), em vez de
+# recompilar: o build do Tauri precisa de Rust + Node e levaria minutos na
+# máquina de quem instala, para produzir exatamente o mesmo binário.
+pkgname=perene
+pkgver=0.0.0        # o CI substitui
+pkgrel=1
+pkgdesc="Gerenciador de terminais para CLIs de IA (Claude Code, Codex, OpenCode)"
+arch=('x86_64')
+url="https://github.com/pedrozampiroli/perene"
+license=('MIT')
+# webkit2gtk-4.1 e gtk3 são o webview; librsvg desenha os ícones SVG.
+depends=('webkit2gtk-4.1' 'gtk3' 'librsvg' 'openssl')
+options=('!strip')  # o binário já vem stripado pelo release profile
+source=("perene.deb")
+sha256sums=('SKIP')
+
+package() {
+  # O .deb já traz a árvore /usr pronta (binário, .desktop e ícones).
+  bsdtar -xf "$srcdir/perene.deb" -C "$srcdir"
+  local dados
+  dados=$(ls "$srcdir"/data.tar.* | head -1)
+  bsdtar -xf "$dados" -C "$pkgdir"
+}
