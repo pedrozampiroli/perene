@@ -2,8 +2,8 @@
 //! (dono único dos PTYs). Login shell é obrigatório (lição #6): senão as CLIs
 //! (claude/codex/opencode) não estão no PATH.
 
-use portable_pty::CommandBuilder;
 use perene_protocol::SpawnRequest;
+use portable_pty::CommandBuilder;
 
 /// Monta o `CommandBuilder` com PATH/aliases carregados e TERM/cwd corretos.
 pub fn build_command(req: &SpawnRequest) -> CommandBuilder {
@@ -50,6 +50,9 @@ fn platform_shell(shell_override: Option<&str>, command: Option<&str>) -> Comman
         // Roda o comando e cai de volta no shell para o pane não fechar.
         Some(c) => {
             cmd.arg("-l");
+            // `-c` torna o shell não interativo. Sem `-i`, zsh/bash não leem o
+            // rc onde nvm/fnm costumam pôr as CLIs no PATH (app aberto pelo Finder).
+            cmd.arg("-i");
             cmd.arg("-c");
             cmd.arg(format!("{c}; exec {shell} -l"));
         }
@@ -94,4 +97,87 @@ fn home_dir() -> Option<String> {
     std::env::var("HOME")
         .ok()
         .or_else(|| std::env::var("USERPROFILE").ok())
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::platform_shell;
+    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+    use std::fs;
+    use std::io::Read;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn command_shell_loads_cli_path_from_zshrc_with_finder_environment() {
+        let home = tempfile::tempdir().unwrap();
+        let bin = home.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+
+        let codex = bin.join("codex");
+        fs::write(&codex, "#!/bin/sh\nprintf 'CODEX_FROM_ZSHRC\\n'\n").unwrap();
+        let mut permissions = fs::metadata(&codex).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&codex, permissions).unwrap();
+
+        fs::write(
+            home.path().join(".zshrc"),
+            "export PATH=\"$HOME/bin:$PATH\"\n",
+        )
+        .unwrap();
+
+        let mut command: CommandBuilder = platform_shell(Some("/bin/zsh"), Some("codex; exit"));
+        command.env_clear();
+        command.env("HOME", home.path());
+        command.env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
+        command.env("SHELL", "/bin/zsh");
+
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut child = pair.slave.spawn_command(command).unwrap();
+        drop(pair.slave);
+
+        let (tx, rx) = mpsc::channel();
+        let reader_thread = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let mut chunk = [0_u8; 256];
+            loop {
+                match reader.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => {
+                        bytes.extend_from_slice(&chunk[..read]);
+                        if bytes
+                            .windows(b"CODEX_FROM_ZSHRC".len())
+                            .any(|window| window == b"CODEX_FROM_ZSHRC")
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+            let _ = tx.send(String::from_utf8_lossy(&bytes).into_owned());
+        });
+
+        let observed = rx.recv_timeout(Duration::from_secs(3));
+        let _ = child.kill();
+        let _ = child.wait();
+        let output = observed.unwrap_or_else(|_| {
+            rx.recv_timeout(Duration::from_secs(1))
+                .unwrap_or_else(|_| "timeout esperando saída do PTY".to_string())
+        });
+        reader_thread.join().unwrap();
+
+        assert!(
+            output.contains("CODEX_FROM_ZSHRC"),
+            "o shell não carregou o PATH configurado no .zshrc: {output:?}"
+        );
+    }
 }

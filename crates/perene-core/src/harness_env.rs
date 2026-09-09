@@ -4,10 +4,13 @@
 //! caminhos** — PTY, adapter ACP e comandos que o agente pede que rodemos:
 //!
 //! 1. **Sessão de harness herdada.** Se o Perene for aberto de dentro de uma
-//!    sessão do Claude Code, o processo herda `CLAUDE_CODE_CHILD_SESSION`,
-//!    `CLAUDECODE`, `AI_AGENT`… Passados adiante, a ferramenta se acha aninhada:
+//!    sessão do Claude Code ou Codex, o processo herda marcadores como
+//!    `CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CODEX_THREAD_ID`, `AI_AGENT`…
+//!    Passados adiante, a ferramenta se acha aninhada:
 //!    no PTY o `claude` desliga o transcript (e o `--resume` falha depois com
-//!    "No conversation found"); no ACP o adapter recusa `session/new`.
+//!    "No conversation found"); no ACP o adapter recusa `session/new`. Algumas
+//!    preferências do harness também não representam o usuário: o Codex exporta
+//!    `NO_COLOR=1`, que deixaria monocromáticos todos os agentes abertos no app.
 //! 2. **Poluição do AppImage.** No Linux o app roda sob um `AppRun` que exporta
 //!    `PYTHONHOME=$APPDIR/usr/`, `PERLLIB`, `QT_PLUGIN_PATH` e prefixos de
 //!    `LD_LIBRARY_PATH`. O processo do app **precisa** disso (o WebKit spawna
@@ -39,12 +42,21 @@ pub fn child_env_fixes() -> Vec<EnvFix> {
     fixes
 }
 
-/// Nomes de variáveis do ambiente ATUAL que marcam sessão de harness. Devolve a
-/// grafia original (Windows é case-insensitive, mas `env_remove` compara literal).
+/// Variáveis do ambiente ATUAL que não devem chegar aos filhos quando o Perene
+/// foi aberto por um harness. Devolve a grafia original (Windows é
+/// case-insensitive, mas `env_remove` compara literal).
 pub fn inherited_session_vars() -> Vec<String> {
-    std::env::vars()
-        .map(|(key, _)| key)
-        .filter(|key| is_session_var(key))
+    inherited_session_vars_from(std::env::vars().map(|(key, _)| key))
+}
+
+fn inherited_session_vars_from(keys: impl IntoIterator<Item = String>) -> Vec<String> {
+    let keys: Vec<String> = keys.into_iter().collect();
+    let launched_by_harness = keys.iter().any(|key| is_session_var(key));
+
+    keys.into_iter()
+        .filter(|key| {
+            is_session_var(key) || (launched_by_harness && key.eq_ignore_ascii_case("NO_COLOR"))
+        })
         .collect()
 }
 
@@ -54,8 +66,10 @@ pub fn is_session_var(key: &str) -> bool {
         "CLAUDECODE",
         "CLAUDE_PID",
         "CLAUDE_EFFORT",
+        "CODEX_CI",
         "CODEX_SANDBOX",
         "CODEX_SESSION_ID",
+        "CODEX_THREAD_ID",
         "OPENCODE_SESSION_ID",
         // O adapter ACP se identifica por aqui; herdado, ele se acha aninhado.
         "AI_AGENT",
@@ -147,12 +161,34 @@ mod tests {
         assert!(is_session_var("CLAUDE_CODE_SESSION_ID"));
         assert!(is_session_var("AI_AGENT"));
         assert!(is_session_var("codex_sandbox"), "compara sem case");
+        assert!(is_session_var("CODEX_CI"));
+        assert!(is_session_var("CODEX_THREAD_ID"));
 
         // Nada de arrastar o ambiente do usuário junto.
         assert!(!is_session_var("PATH"));
         assert!(!is_session_var("HOME"));
         assert!(!is_session_var("SHELL"));
         assert!(!is_session_var("CLAUDE_CONFIG_DIR"), "config não é sessão");
+    }
+
+    #[test]
+    fn no_color_is_removed_only_for_harness_launches() {
+        let launched_by_codex = inherited_session_vars_from(
+            ["PATH", "NO_COLOR", "CODEX_THREAD_ID"]
+                .into_iter()
+                .map(str::to_string),
+        );
+        assert_eq!(
+            launched_by_codex,
+            vec!["NO_COLOR".to_string(), "CODEX_THREAD_ID".to_string()]
+        );
+
+        let launched_normally =
+            inherited_session_vars_from(["PATH", "NO_COLOR"].into_iter().map(str::to_string));
+        assert!(
+            launched_normally.is_empty(),
+            "NO_COLOR configurado pelo usuário deve ser preservado"
+        );
     }
 
     // Lógica de string pura: os testes NÃO são `cfg(linux)` de propósito, para
