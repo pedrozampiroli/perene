@@ -5,9 +5,13 @@
 //    tratamos Option como Meta (macOptionIsMeta:false).
 //  - shift+enter: envia LF (\n) — o Claude Code trata como quebra de linha.
 //  - copiar: Cmd+C (mac) / Ctrl+Shift+C (win/linux) via plugin de clipboard.
-//  - colar texto: evento nativo `paste` do webview → xterm cola (bracketed).
-//  - colar imagem: intercepta o `paste`, salva PNG em ~/.perene2/paste/ e escreve
-//    o caminho no terminal.
+//  - colar texto/imagem: Ctrl+V (Cmd+V no mac) lê o clipboard nativo via
+//    tauri-plugin-clipboard-manager (arboard), não o evento `paste` do webview
+//    — WebKitGTK (Linux) e WebView2 (Windows) não expõem MIME image/* de forma
+//    confiável em `ClipboardEvent.clipboardData`. Imagem vira PNG em
+//    ~/.perene2/paste/ e o caminho é escrito no terminal; texto usa
+//    `term.paste()` (bracketed). O listener de `paste` do DOM fica só como
+//    fallback pra colar via menu de contexto.
 //
 // dispose() NÃO mata o PTY (só o xterm local): reorganizar splits/trocar de aba
 // preserva a sessão no daemon. Fechar o pane de fato chama terminal_kill à parte.
@@ -19,7 +23,8 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { writeText, readText, readImage } from "@tauri-apps/plugin-clipboard-manager";
+import type { Image } from "@tauri-apps/api/image";
 import { api } from "./api";
 import { t } from "./i18n.svelte";
 import { PTY_OUTPUT, PTY_EXIT, PTY_ATTACH_DONE } from "./events";
@@ -53,6 +58,18 @@ async function ensurePng(blob: Blob): Promise<Uint8Array> {
   canvas.width = bmp.width;
   canvas.height = bmp.height;
   canvas.getContext("2d")!.drawImage(bmp, 0, 0);
+  const png: Blob = await new Promise((res) => canvas.toBlob((b) => res(b!), "image/png"));
+  return new Uint8Array(await png.arrayBuffer());
+}
+
+/** Mesma conversão de `ensurePng`, mas a partir do RGBA cru que o clipboard
+ *  nativo (arboard) devolve, sem passar por um `Blob`/MIME type. */
+async function pngFromClipboardImage(image: Image): Promise<Uint8Array> {
+  const [rgba, { width, height }] = await Promise.all([image.rgba(), image.size()]);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0);
   const png: Blob = await new Promise((res) => canvas.toBlob((b) => res(b!), "image/png"));
   return new Uint8Array(await png.arrayBuffer());
 }
@@ -213,11 +230,42 @@ export class PerenePane {
         this.send("\x1b[13;2u");
         return false;
       }
-      // Colar (texto) fica com o handler nativo de `paste` do webview.
+      const pasteCombo = isMac
+        ? e.metaKey && !e.shiftKey && e.code === "KeyV"
+        : e.ctrlKey && !e.shiftKey && e.code === "KeyV";
+      if (pasteCombo) {
+        e.preventDefault();
+        void this.pasteFromClipboard();
+        return false;
+      }
       return true;
     });
   }
 
+  /** Lê o clipboard nativo (imagem ou texto) e cola no terminal. Ver o
+   *  comentário no topo do arquivo: não dá pra confiar no evento `paste` do
+   *  webview pra imagens em todas as plataformas. */
+  private pasteFromClipboard = async (): Promise<void> => {
+    try {
+      const image = await readImage();
+      const png = await pngFromClipboardImage(image);
+      const path = await api.savePasteImage(bytesToB64(png));
+      this.send(path + " ");
+      return;
+    } catch {
+      // clipboard sem imagem: tenta texto.
+    }
+    try {
+      const text = await readText();
+      if (text) this.term.paste(text);
+    } catch {
+      // clipboard vazio ou sem permissão: nada a colar.
+    }
+  };
+
+  /** Fallback pra colar via menu de contexto (sem o Ctrl+V/Cmd+V que
+   *  `pasteFromClipboard` intercepta). Só cobre o caso em que o webview expõe
+   *  a imagem no `ClipboardEvent`; texto continua no caminho nativo do xterm. */
   private onPaste = async (e: ClipboardEvent): Promise<void> => {
     const items = e.clipboardData?.items;
     if (!items) return;
